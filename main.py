@@ -5,7 +5,9 @@ import os
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI, BackgroundTasks, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from config import settings
@@ -17,7 +19,8 @@ import engines
 import utils
 from net_utils import get_proxy_url_for
 
-app = FastAPI(title="Polymarket BTC 15m Assistant API")
+app = FastAPI(title="Polymarket BTC 15m Assistant")
+templates = Jinja2Templates(directory="templates")
 
 # Global state to store the latest data
 state = {
@@ -361,7 +364,11 @@ async def startup_event():
     asyncio.create_task(chainlink_ws_stream.start())
     asyncio.create_task(update_loop())
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
+async def get_dashboard(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
+
+@app.get("/api/latest")
 async def get_latest():
     return state["latest_data"]
 
