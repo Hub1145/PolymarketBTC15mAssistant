@@ -14,6 +14,8 @@ import ws_data
 import chainlink
 import indicators
 import engines
+import utils
+from net_utils import get_proxy_url_for
 
 app = FastAPI(title="Polymarket BTC 15m Assistant API")
 
@@ -30,6 +32,7 @@ state = {
 # Background task instances
 binance_stream = ws_data.BinanceTradeStream(symbol=settings.SYMBOL)
 polymarket_ws_stream = ws_data.PolymarketChainlinkStream(ws_url=settings.POLYMARKET_LIVE_DATA_WS_URL)
+chainlink_ws_stream = ws_data.ChainlinkPriceStream(aggregator=settings.CHAINLINK_BTC_USD_AGGREGATOR)
 
 def get_candle_window_timing(window_minutes: int) -> Dict[str, float]:
     now_ms = time.time() * 1000
@@ -165,12 +168,8 @@ async def execute_trade(decision: Dict[str, Any], market_prices: Dict[str, Any],
         print(f"LIVE mode enabled but execution not implemented yet. Mode: {state['trading_mode']}")
 
 async def update_trades(current_prices: Dict[str, Any]):
-    # This would normally check for market resolution.
-    # For now, we simulate resolution based on price to beat if we can find it.
-
     remaining_active = []
     for trade in state["active_trades"]:
-        # Find if market has ended
         market = await data.fetch_market_by_slug(trade["market_slug"])
         if not market:
             remaining_active.append(trade)
@@ -178,38 +177,38 @@ async def update_trades(current_prices: Dict[str, Any]):
 
         is_closed = market.get("closed", False)
         if is_closed:
-            # Determine outcome
-            # This is complex without full Polymarket event status, so we use a simplification:
-            # We'd need to know which outcome won. Polymarket Gamma API provides "status" or "winner".
-            winner = market.get("status") # Often "resolved"
-
-            # Simple simulation: assume it's resolved if current time > end date
-            end_date = datetime.fromisoformat(market["endDate"].replace('Z', '+00:00')).timestamp()
-            if time.time() > end_date:
-                # In a real bot, you'd fetch the actual winner from the API.
-                # For this assistant, we'll mark it as resolved in the logs.
-                trade["status"] = "CLOSED"
-                trade["exit_time"] = datetime.now().isoformat()
-
-                # Simple win/loss logic for simulation:
-                # If the market is resolved, we'd know the payout.
-                # Here we just archive it.
-                state["trade_history"].append(trade)
-                print(f"Trade for {trade['market_slug']} closed (Simulated)")
-            else:
-                remaining_active.append(trade)
+            trade["status"] = "CLOSED"
+            trade["exit_time"] = datetime.now().isoformat()
+            state["trade_history"].append(trade)
+            print(f"Trade for {trade['market_slug']} closed (Simulated)")
         else:
             remaining_active.append(trade)
 
     state["active_trades"] = remaining_active
 
 async def update_loop():
+    csv_header = [
+        "timestamp",
+        "entry_minute",
+        "time_left_min",
+        "regime",
+        "signal",
+        "model_up",
+        "model_down",
+        "mkt_up",
+        "mkt_down",
+        "edge_up",
+        "edge_down",
+        "recommendation"
+    ]
+
     while True:
         try:
             timing = get_candle_window_timing(settings.CANDLE_WINDOW_MINUTES)
 
             binance_ws = binance_stream.get_last()
             poly_ws = polymarket_ws_stream.get_last()
+            cl_ws = chainlink_ws_stream.get_last()
 
             klines_1m, klines_5m, last_price, chainlink_data, poly_snapshot = await asyncio.gather(
                 data.fetch_klines(settings.SYMBOL, "1m", 240),
@@ -219,9 +218,9 @@ async def update_loop():
                 fetch_polymarket_snapshot()
             )
 
-            # Fallback to WS price if available
+            # Fallback hierarchy for current price
             spot_price = binance_ws.get("price") or last_price
-            current_price = poly_ws.get("price") or chainlink_data.get("price")
+            current_price = poly_ws.get("price") or cl_ws.get("price") or chainlink_data.get("price")
 
             settlement_ms = None
             if poly_snapshot["ok"] and poly_snapshot["market"].get("endDate"):
@@ -236,12 +235,15 @@ async def update_loop():
             lookback = settings.VWAP_SLOPE_LOOKBACK_MINUTES
             vwap_slope = (vwap_now - vwap_series[-lookback]) / lookback if vwap_now and len(vwap_series) >= lookback and vwap_series[-lookback] else None
 
+            # Efficient RSI calculation
             rsi_now = indicators.compute_rsi(closes, settings.RSI_PERIOD)
-            rsi_series = []
-            for i in range(len(closes)):
+
+            # Compute limited series for slope to save time
+            rsi_series_limited = []
+            for i in range(len(closes) - 5, len(closes)):
                 r = indicators.compute_rsi(closes[:i+1], settings.RSI_PERIOD)
-                if r is not None: rsi_series.append(r)
-            rsi_slope = indicators.slope_last(rsi_series, 3)
+                if r is not None: rsi_series_limited.append(r)
+            rsi_slope = indicators.slope_last(rsi_series_limited, 3)
 
             macd = indicators.compute_macd(closes, settings.MACD_FAST, settings.MACD_SLOW, settings.MACD_SIGNAL)
 
@@ -292,11 +294,27 @@ async def update_loop():
                 "modelDown": time_aware["adjustedDown"]
             })
 
-            # Execute simulation or live trade
             if poly_snapshot["ok"]:
                 await execute_trade(decision, poly_snapshot["prices"], poly_snapshot["market"])
 
             await update_trades(poly_snapshot["prices"] if poly_snapshot["ok"] else {})
+
+            # CSV Logging
+            signal_label = f"BUY {decision['side']}" if decision["action"] == "ENTER" else "NO TRADE"
+            utils.append_csv_row("./logs/signals.csv", csv_header, [
+                datetime.now().isoformat(),
+                timing["elapsedMinutes"],
+                time_left_min,
+                regime_info["regime"],
+                signal_label,
+                time_aware["adjustedUp"],
+                time_aware["adjustedDown"],
+                market_up,
+                market_down,
+                edge["edgeUp"],
+                edge["edgeDown"],
+                f"{decision['side']}:{decision['phase']}:{decision['strength']}" if decision["action"] == "ENTER" else "NO_TRADE"
+            ])
 
             state["latest_data"] = {
                 "timestamp": datetime.now().isoformat(),
@@ -340,6 +358,7 @@ async def update_loop():
 async def startup_event():
     asyncio.create_task(binance_stream.start())
     asyncio.create_task(polymarket_ws_stream.start())
+    asyncio.create_task(chainlink_ws_stream.start())
     asyncio.create_task(update_loop())
 
 @app.get("/")

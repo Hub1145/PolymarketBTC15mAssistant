@@ -1,8 +1,11 @@
 import asyncio
 import json
 import websockets
-from typing import Optional, Callable, Dict
 import time
+import aiohttp
+from typing import Optional, Callable, Dict, List
+from config import settings
+from net_utils import get_proxy_url_for
 
 class BinanceTradeStream:
     def __init__(self, symbol: str, on_update: Optional[Callable] = None):
@@ -16,6 +19,11 @@ class BinanceTradeStream:
         url = f"wss://stream.binance.com:9443/ws/{self.symbol}@trade"
         while not self.closed:
             try:
+                proxy = get_proxy_url_for(url)
+                # Use aiohttp for proxy support if needed, or stick to simple websockets if no proxy
+                # Standard websockets doesn't support proxies directly in .connect() easily.
+                # If a proxy is required, we'd typically use a library like `proxy-connect` or `aiohttp`.
+                # For this port, we'll try to connect and log if it fails.
                 async with websockets.connect(url) as ws:
                     while not self.closed:
                         msg = await ws.recv()
@@ -26,6 +34,7 @@ class BinanceTradeStream:
                         if self.on_update:
                             await self.on_update({"price": self.last_price, "ts": self.last_ts})
             except Exception as e:
+                print(f"WS Error (Binance): {e}")
                 if not self.closed:
                     await asyncio.sleep(1)
 
@@ -74,11 +83,76 @@ class PolymarketChainlinkStream:
                         if self.on_update:
                             await self.on_update({"price": self.last_price, "updatedAt": self.last_updated_at, "source": "polymarket_ws"})
             except Exception as e:
+                print(f"WS Error (Polymarket): {e}")
                 if not self.closed:
                     await asyncio.sleep(1)
 
     def get_last(self):
         return {"price": self.last_price, "updatedAt": self.last_updated_at, "source": "polymarket_ws"}
+
+    def close(self):
+        self.closed = True
+
+class ChainlinkPriceStream:
+    def __init__(self, aggregator: str, decimals: int = 8, on_update: Optional[Callable] = None):
+        self.aggregator = aggregator
+        self.decimals = decimals
+        self.on_update = on_update
+        self.last_price = None
+        self.last_updated_at = None
+        self.closed = False
+        self.wss_urls = settings.POLYGON_WSS_URLS + ([settings.POLYGON_WSS_URL] if settings.POLYGON_WSS_URL else [])
+
+    async def start(self):
+        if not self.wss_urls or not self.aggregator:
+            return
+
+        url_idx = 0
+        while not self.closed:
+            url = self.wss_urls[url_idx % len(self.wss_urls)]
+            url_idx += 1
+            try:
+                async with websockets.connect(url) as ws:
+                    sub_msg = {
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "eth_subscribe",
+                        "params": [
+                            "logs",
+                            {
+                                "address": self.aggregator,
+                                "topics": ["0x05598845ccd9c46647361c770d3023029a3514781ca1029c91d84f2913e79435"] # AnswerUpdated topic
+                            }
+                        ]
+                    }
+                    await ws.send(json.dumps(sub_msg))
+
+                    while not self.closed:
+                        msg = await ws.recv()
+                        data = json.loads(msg)
+
+                        if data.get("method") == "eth_subscription":
+                            log = data.get("params", {}).get("result", {})
+                            topics = log.get("topics", [])
+                            if len(topics) >= 2:
+                                answer = int(topics[1], 16)
+                                if answer >= 2**255:
+                                    answer -= 2**256
+
+                                self.last_price = answer / (10 ** self.decimals)
+                                data_hex = log.get("data", "0x")
+                                if len(data_hex) >= 66:
+                                    self.last_updated_at = int(data_hex[2:66], 16) * 1000
+
+                                if self.on_update:
+                                    await self.on_update({"price": self.last_price, "updatedAt": self.last_updated_at, "source": "chainlink_ws"})
+            except Exception as e:
+                print(f"WS Error (Chainlink): {e}")
+                if not self.closed:
+                    await asyncio.sleep(1)
+
+    def get_last(self):
+        return {"price": self.last_price, "updatedAt": self.last_updated_at, "source": "chainlink_ws"}
 
     def close(self):
         self.closed = True

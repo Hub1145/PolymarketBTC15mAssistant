@@ -1,6 +1,7 @@
 import httpx
 from config import settings
 from typing import List, Dict, Optional
+from net_utils import get_proxy_url_for
 
 def to_number(x) -> Optional[float]:
     try:
@@ -16,7 +17,8 @@ async def fetch_klines(symbol: str, interval: str, limit: int) -> List[Dict]:
         "interval": interval,
         "limit": limit
     }
-    async with httpx.AsyncClient() as client:
+    proxy = get_proxy_url_for(url)
+    async with httpx.AsyncClient(proxy=proxy if proxy else None) as client:
         res = await client.get(url, params=params)
         res.raise_for_status()
         data = res.json()
@@ -34,7 +36,8 @@ async def fetch_klines(symbol: str, interval: str, limit: int) -> List[Dict]:
 async def fetch_last_price(symbol: str) -> Optional[float]:
     url = f"{settings.BINANCE_BASE_URL}/api/v3/ticker/price"
     params = {"symbol": symbol}
-    async with httpx.AsyncClient() as client:
+    proxy = get_proxy_url_for(url)
+    async with httpx.AsyncClient(proxy=proxy if proxy else None) as client:
         res = await client.get(url, params=params)
         res.raise_for_status()
         data = res.json()
@@ -43,7 +46,8 @@ async def fetch_last_price(symbol: str) -> Optional[float]:
 async def fetch_market_by_slug(slug: str) -> Optional[Dict]:
     url = f"{settings.GAMMA_BASE_URL}/markets"
     params = {"slug": slug}
-    async with httpx.AsyncClient() as client:
+    proxy = get_proxy_url_for(url)
+    async with httpx.AsyncClient(proxy=proxy if proxy else None) as client:
         res = await client.get(url, params=params)
         res.raise_for_status()
         data = res.json()
@@ -58,7 +62,8 @@ async def fetch_live_events_by_series_id(series_id: str, limit: int = 20) -> Lis
         "closed": "false",
         "limit": limit
     }
-    async with httpx.AsyncClient() as client:
+    proxy = get_proxy_url_for(url)
+    async with httpx.AsyncClient(proxy=proxy if proxy else None) as client:
         res = await client.get(url, params=params)
         res.raise_for_status()
         data = res.json()
@@ -75,7 +80,8 @@ def flatten_event_markets(events: List[Dict]) -> List[Dict]:
 async def fetch_clob_price(token_id: str, side: str) -> Optional[float]:
     url = f"{settings.CLOB_BASE_URL}/price"
     params = {"token_id": token_id, "side": side}
-    async with httpx.AsyncClient() as client:
+    proxy = get_proxy_url_for(url)
+    async with httpx.AsyncClient(proxy=proxy if proxy else None) as client:
         res = await client.get(url, params=params)
         res.raise_for_status()
         data = res.json()
@@ -84,7 +90,8 @@ async def fetch_clob_price(token_id: str, side: str) -> Optional[float]:
 async def fetch_order_book(token_id: str) -> Dict:
     url = f"{settings.CLOB_BASE_URL}/book"
     params = {"token_id": token_id}
-    async with httpx.AsyncClient() as client:
+    proxy = get_proxy_url_for(url)
+    async with httpx.AsyncClient(proxy=proxy if proxy else None) as client:
         res = await client.get(url, params=params)
         res.raise_for_status()
         return res.json()
