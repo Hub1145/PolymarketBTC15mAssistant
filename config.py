@@ -1,9 +1,14 @@
 import os
+import json
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import List
+from typing import List, Dict, Any, Optional
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8', extra='ignore')
+
+    MODE: str = "paper"  # "paper" or "live"
+    PAPER_BALANCE_USD: float = 1000.0
+    PRIVATE_KEY: str = ""
 
     SYMBOL: str = "BTCUSDT"
     BINANCE_BASE_URL: str = "https://api.binance.com"
@@ -42,4 +47,39 @@ class Settings(BaseSettings):
     HTTPS_PROXY: str = os.getenv("HTTPS_PROXY", os.getenv("https_proxy", ""))
     ALL_PROXY: str = os.getenv("ALL_PROXY", os.getenv("all_proxy", ""))
 
-settings = Settings()
+def load_settings():
+    base_settings = Settings()
+    config_path = "config.json"
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r") as f:
+                config_data = json.load(f)
+
+            # Map config.json structure to Settings attributes
+            if "mode" in config_data: base_settings.MODE = config_data["mode"]
+            if "paper_balance_usd" in config_data: base_settings.PAPER_BALANCE_USD = config_data["paper_balance_usd"]
+            if "private_key" in config_data: base_settings.PRIVATE_KEY = config_data["private_key"]
+
+            if "polymarket" in config_data:
+                poly = config_data["polymarket"]
+                if "series_id" in poly: base_settings.POLYMARKET_SERIES_ID = poly["series_id"]
+                if "series_slug" in poly: base_settings.POLYMARKET_SERIES_SLUG = poly["series_slug"]
+                if "auto_select_latest" in poly: base_settings.POLYMARKET_AUTO_SELECT_LATEST = poly["auto_select_latest"]
+
+            if "trading" in config_data:
+                trading = config_data["trading"]
+                if "symbol" in trading: base_settings.SYMBOL = trading["symbol"]
+                if "candle_window_minutes" in trading: base_settings.CANDLE_WINDOW_MINUTES = trading["candle_window_minutes"]
+                if "poll_interval_ms" in trading: base_settings.POLL_INTERVAL_MS = trading["poll_interval_ms"]
+
+            if "chainlink" in config_data:
+                cl = config_data["chainlink"]
+                if "polygon_rpc_url" in cl: base_settings.POLYGON_RPC_URL = cl["polygon_rpc_url"]
+                if "btc_usd_aggregator" in cl: base_settings.CHAINLINK_BTC_USD_AGGREGATOR = cl["btc_usd_aggregator"]
+
+        except Exception as e:
+            print(f"Warning: Failed to load config.json: {e}")
+
+    return base_settings
+
+settings = load_settings()

@@ -1,5 +1,7 @@
 import asyncio
 import time
+import json
+import os
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
@@ -18,7 +20,11 @@ app = FastAPI(title="Polymarket BTC 15m Assistant API")
 # Global state to store the latest data
 state = {
     "latest_data": {},
-    "last_update_ts": 0
+    "last_update_ts": 0,
+    "trading_mode": settings.MODE,
+    "paper_balance": settings.PAPER_BALANCE_USD,
+    "active_trades": [],
+    "trade_history": []
 }
 
 # Background task instances
@@ -61,17 +67,14 @@ async def fetch_polymarket_snapshot() -> Dict[str, Any]:
 
     outcomes = market.get("outcomes", [])
     if isinstance(outcomes, str):
-        import json
         outcomes = json.loads(outcomes)
 
     clob_token_ids = market.get("clobTokenIds", [])
     if isinstance(clob_token_ids, str):
-        import json
         clob_token_ids = json.loads(clob_token_ids)
 
     outcome_prices = market.get("outcomePrices", [])
     if isinstance(outcome_prices, str):
-        import json
         outcome_prices = json.loads(outcome_prices)
 
     up_token_id = None
@@ -122,6 +125,84 @@ async def fetch_polymarket_snapshot() -> Dict[str, Any]:
         }
     }
 
+async def execute_trade(decision: Dict[str, Any], market_prices: Dict[str, Any], market: Dict[str, Any]):
+    if decision["action"] != "ENTER":
+        return
+
+    side = decision["side"]
+    price = market_prices["up"] if side == "UP" else market_prices["down"]
+    if price is None:
+        return
+
+    # Check if already in a trade for this market
+    if any(t["market_id"] == market["id"] for t in state["active_trades"]):
+        return
+
+    amount_to_risk = 100.0  # Fixed risk for simulation
+    if state["paper_balance"] < amount_to_risk:
+        print(f"Insufficient paper balance: {state['paper_balance']}")
+        return
+
+    trade = {
+        "market_id": market["id"],
+        "market_slug": market.get("slug"),
+        "side": side,
+        "entry_price": price,
+        "amount": amount_to_risk,
+        "shares": amount_to_risk / price,
+        "entry_time": datetime.now().isoformat(),
+        "status": "OPEN",
+        "settlement_price": None,
+        "profit_loss": None
+    }
+
+    if state["trading_mode"] == "paper":
+        state["paper_balance"] -= amount_to_risk
+        state["active_trades"].append(trade)
+        print(f"Executed PAPER trade: {side} @ {price} for {market.get('slug')}")
+    else:
+        # Live mode logic would go here
+        print(f"LIVE mode enabled but execution not implemented yet. Mode: {state['trading_mode']}")
+
+async def update_trades(current_prices: Dict[str, Any]):
+    # This would normally check for market resolution.
+    # For now, we simulate resolution based on price to beat if we can find it.
+
+    remaining_active = []
+    for trade in state["active_trades"]:
+        # Find if market has ended
+        market = await data.fetch_market_by_slug(trade["market_slug"])
+        if not market:
+            remaining_active.append(trade)
+            continue
+
+        is_closed = market.get("closed", False)
+        if is_closed:
+            # Determine outcome
+            # This is complex without full Polymarket event status, so we use a simplification:
+            # We'd need to know which outcome won. Polymarket Gamma API provides "status" or "winner".
+            winner = market.get("status") # Often "resolved"
+
+            # Simple simulation: assume it's resolved if current time > end date
+            end_date = datetime.fromisoformat(market["endDate"].replace('Z', '+00:00')).timestamp()
+            if time.time() > end_date:
+                # In a real bot, you'd fetch the actual winner from the API.
+                # For this assistant, we'll mark it as resolved in the logs.
+                trade["status"] = "CLOSED"
+                trade["exit_time"] = datetime.now().isoformat()
+
+                # Simple win/loss logic for simulation:
+                # If the market is resolved, we'd know the payout.
+                # Here we just archive it.
+                state["trade_history"].append(trade)
+                print(f"Trade for {trade['market_slug']} closed (Simulated)")
+            else:
+                remaining_active.append(trade)
+        else:
+            remaining_active.append(trade)
+
+    state["active_trades"] = remaining_active
+
 async def update_loop():
     while True:
         try:
@@ -156,8 +237,10 @@ async def update_loop():
             vwap_slope = (vwap_now - vwap_series[-lookback]) / lookback if vwap_now and len(vwap_series) >= lookback and vwap_series[-lookback] else None
 
             rsi_now = indicators.compute_rsi(closes, settings.RSI_PERIOD)
-            rsi_series = [indicators.compute_rsi(closes[:i+1], settings.RSI_PERIOD) for i in range(len(closes))]
-            rsi_series = [r for r in rsi_series if r is not None]
+            rsi_series = []
+            for i in range(len(closes)):
+                r = indicators.compute_rsi(closes[:i+1], settings.RSI_PERIOD)
+                if r is not None: rsi_series.append(r)
             rsi_slope = indicators.slope_last(rsi_series, 3)
 
             macd = indicators.compute_macd(closes, settings.MACD_FAST, settings.MACD_SLOW, settings.MACD_SIGNAL)
@@ -209,10 +292,22 @@ async def update_loop():
                 "modelDown": time_aware["adjustedDown"]
             })
 
+            # Execute simulation or live trade
+            if poly_snapshot["ok"]:
+                await execute_trade(decision, poly_snapshot["prices"], poly_snapshot["market"])
+
+            await update_trades(poly_snapshot["prices"] if poly_snapshot["ok"] else {})
+
             state["latest_data"] = {
                 "timestamp": datetime.now().isoformat(),
                 "timing": timing,
                 "market": poly_snapshot.get("market") if poly_snapshot["ok"] else None,
+                "trading_state": {
+                    "mode": state["trading_mode"],
+                    "balance": state["paper_balance"],
+                    "active_trades": state["active_trades"],
+                    "history_count": len(state["trade_history"])
+                },
                 "prices": {
                     "spot": spot_price,
                     "chainlink": current_price,
@@ -253,7 +348,11 @@ async def get_latest():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "last_update": state["last_update_ts"]}
+    return {"status": "ok", "last_update": state["last_update_ts"], "mode": state["trading_mode"]}
+
+@app.get("/history")
+async def get_history():
+    return state["trade_history"]
 
 if __name__ == "__main__":
     import uvicorn

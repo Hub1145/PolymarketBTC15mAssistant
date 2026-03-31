@@ -1,0 +1,19 @@
+{
+  "mode": "paper",
+  "paper_balance_usd": 1000.0,
+  "private_key": "",
+  "polymarket": {
+    "series_id": "10192",
+    "series_slug": "btc-up-or-down-15m",
+    "auto_select_latest": true
+  },
+  "trading": {
+    "symbol": "BTCUSDT",
+    "candle_window_minutes": 15,
+    "poll_interval_ms": 1000
+  },
+  "chainlink": {
+    "polygon_rpc_url": "https://polygon-rpc.com",
+    "btc_usd_aggregator": "0xc907E116054Ad103354f2D350FD2514433D57F6f"
+  }
+}
