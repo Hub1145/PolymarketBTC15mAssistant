@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     POLL_INTERVAL_MS: int = 1000
     CANDLE_WINDOW_MINUTES: int = 15
 
+    RISK_TYPE: str = "percent"  # "percent" or "fixed"
+    RISK_VALUE: float = 10.0
+
     VWAP_SLOPE_LOOKBACK_MINUTES: int = 5
     RSI_PERIOD: int = 14
     RSI_MA_PERIOD: int = 14
@@ -38,7 +41,7 @@ class Settings(BaseSettings):
     # Chainlink
     POLYGON_RPC_URL: str = os.getenv("POLYGON_RPC_URL", "https://polygon-rpc.com")
     POLYGON_RPC_URLS: List[str] = [url.strip() for url in os.getenv("POLYGON_RPC_URLS", "").split(",") if url.strip()]
-    POLYGON_WSS_URL: str = os.getenv("POLYGON_WSS_URL", "")
+    POLYGON_WSS_URL: str = os.getenv("POLYGON_WSS_URL", "wss://polygon-bor-rpc.publicnode.com")
     POLYGON_WSS_URLS: List[str] = [url.strip() for url in os.getenv("POLYGON_WSS_URLS", "").split(",") if url.strip()]
     CHAINLINK_BTC_USD_AGGREGATOR: str = os.getenv("CHAINLINK_BTC_USD_AGGREGATOR", "0xc907E116054Ad103354f2D350FD2514433D57F6f")
 
@@ -55,26 +58,34 @@ def load_settings():
             with open(config_path, "r") as f:
                 config_data = json.load(f)
 
-            # Map config.json structure to Settings attributes
             if "mode" in config_data: base_settings.MODE = config_data["mode"]
             if "paper_balance_usd" in config_data: base_settings.PAPER_BALANCE_USD = config_data["paper_balance_usd"]
             if "private_key" in config_data: base_settings.PRIVATE_KEY = config_data["private_key"]
 
             if "polymarket" in config_data:
                 poly = config_data["polymarket"]
+                if "gamma_base_url" in poly: base_settings.GAMMA_BASE_URL = poly["gamma_base_url"]
+                if "clob_base_url" in poly: base_settings.CLOB_BASE_URL = poly["clob_base_url"]
+                if "live_ws_url" in poly: base_settings.POLYMARKET_LIVE_DATA_WS_URL = poly["live_ws_url"]
                 if "series_id" in poly: base_settings.POLYMARKET_SERIES_ID = poly["series_id"]
                 if "series_slug" in poly: base_settings.POLYMARKET_SERIES_SLUG = poly["series_slug"]
                 if "auto_select_latest" in poly: base_settings.POLYMARKET_AUTO_SELECT_LATEST = poly["auto_select_latest"]
+                if "up_label" in poly: base_settings.POLYMARKET_UP_LABEL = poly["up_label"]
+                if "down_label" in poly: base_settings.POLYMARKET_DOWN_LABEL = poly["down_label"]
 
             if "trading" in config_data:
                 trading = config_data["trading"]
                 if "symbol" in trading: base_settings.SYMBOL = trading["symbol"]
+                if "binance_base_url" in trading: base_settings.BINANCE_BASE_URL = trading["binance_base_url"]
                 if "candle_window_minutes" in trading: base_settings.CANDLE_WINDOW_MINUTES = trading["candle_window_minutes"]
                 if "poll_interval_ms" in trading: base_settings.POLL_INTERVAL_MS = trading["poll_interval_ms"]
+                if "risk_type" in trading: base_settings.RISK_TYPE = trading["risk_type"]
+                if "risk_value" in trading: base_settings.RISK_VALUE = trading["risk_value"]
 
             if "chainlink" in config_data:
                 cl = config_data["chainlink"]
                 if "polygon_rpc_url" in cl: base_settings.POLYGON_RPC_URL = cl["polygon_rpc_url"]
+                if "polygon_wss_url" in cl: base_settings.POLYGON_WSS_URL = cl["polygon_wss_url"]
                 if "btc_usd_aggregator" in cl: base_settings.CHAINLINK_BTC_USD_AGGREGATOR = cl["btc_usd_aggregator"]
 
         except Exception as e:

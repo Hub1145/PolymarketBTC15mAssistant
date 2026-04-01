@@ -2,7 +2,6 @@ import asyncio
 import json
 import websockets
 import time
-import aiohttp
 from typing import Optional, Callable, Dict, List
 from config import settings
 from net_utils import get_proxy_url_for
@@ -19,11 +18,7 @@ class BinanceTradeStream:
         url = f"wss://stream.binance.com:9443/ws/{self.symbol}@trade"
         while not self.closed:
             try:
-                proxy = get_proxy_url_for(url)
-                # Use aiohttp for proxy support if needed, or stick to simple websockets if no proxy
-                # Standard websockets doesn't support proxies directly in .connect() easily.
-                # If a proxy is required, we'd typically use a library like `proxy-connect` or `aiohttp`.
-                # For this port, we'll try to connect and log if it fails.
+                # Note: standard websockets library doesn't easily support proxies
                 async with websockets.connect(url) as ws:
                     while not self.closed:
                         msg = await ws.recv()

@@ -1,14 +1,12 @@
 import asyncio
 import time
 import json
-import os
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
-from fastapi import FastAPI, BackgroundTasks, Request
+from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
 
 from config import settings
 import data
@@ -17,7 +15,6 @@ import chainlink
 import indicators
 import engines
 import utils
-from net_utils import get_proxy_url_for
 
 app = FastAPI(title="Polymarket BTC 15m Assistant")
 templates = Jinja2Templates(directory="templates")
@@ -61,7 +58,6 @@ async def fetch_polymarket_snapshot() -> Dict[str, Any]:
         events = await data.fetch_live_events_by_series_id(settings.POLYMARKET_SERIES_ID)
         markets = data.flatten_event_markets(events)
 
-        # Simple pick latest logic
         now = time.time() * 1000
         live_markets = [m for m in markets if m.get("endDate") and datetime.fromisoformat(m["endDate"].replace('Z', '+00:00')).timestamp() * 1000 > now]
         if live_markets:
@@ -140,13 +136,17 @@ async def execute_trade(decision: Dict[str, Any], market_prices: Dict[str, Any],
     if price is None:
         return
 
-    # Check if already in a trade for this market
     if any(t["market_id"] == market["id"] for t in state["active_trades"]):
         return
 
-    amount_to_risk = 100.0  # Fixed risk for simulation
-    if state["paper_balance"] < amount_to_risk:
-        print(f"Insufficient paper balance: {state['paper_balance']}")
+    # Risk management
+    if settings.RISK_TYPE == "percent":
+        amount_to_risk = (settings.RISK_VALUE / 100.0) * state["paper_balance"]
+    else:
+        amount_to_risk = settings.RISK_VALUE
+
+    if state["paper_balance"] < amount_to_risk or amount_to_risk <= 0:
+        print(f"Insufficient paper balance ({state['paper_balance']}) or invalid risk amount ({amount_to_risk})")
         return
 
     trade = {
@@ -165,10 +165,9 @@ async def execute_trade(decision: Dict[str, Any], market_prices: Dict[str, Any],
     if state["trading_mode"] == "paper":
         state["paper_balance"] -= amount_to_risk
         state["active_trades"].append(trade)
-        print(f"Executed PAPER trade: {side} @ {price} for {market.get('slug')}")
+        print(f"Executed PAPER trade: {side} @ {price} for {market.get('slug')} (Amount: ${amount_to_risk:.2f})")
     else:
-        # Live mode logic would go here
-        print(f"LIVE mode enabled but execution not implemented yet. Mode: {state['trading_mode']}")
+        print(f"LIVE mode enabled but execution not implemented. Mode: {state['trading_mode']}")
 
 async def update_trades(current_prices: Dict[str, Any]):
     remaining_active = []
@@ -191,18 +190,8 @@ async def update_trades(current_prices: Dict[str, Any]):
 
 async def update_loop():
     csv_header = [
-        "timestamp",
-        "entry_minute",
-        "time_left_min",
-        "regime",
-        "signal",
-        "model_up",
-        "model_down",
-        "mkt_up",
-        "mkt_down",
-        "edge_up",
-        "edge_down",
-        "recommendation"
+        "timestamp", "entry_minute", "time_left_min", "regime", "signal",
+        "model_up", "model_down", "mkt_up", "mkt_down", "edge_up", "edge_down", "recommendation"
     ]
 
     while True:
@@ -221,7 +210,6 @@ async def update_loop():
                 fetch_polymarket_snapshot()
             )
 
-            # Fallback hierarchy for current price
             spot_price = binance_ws.get("price") or last_price
             current_price = poly_ws.get("price") or cl_ws.get("price") or chainlink_data.get("price")
 
@@ -238,10 +226,8 @@ async def update_loop():
             lookback = settings.VWAP_SLOPE_LOOKBACK_MINUTES
             vwap_slope = (vwap_now - vwap_series[-lookback]) / lookback if vwap_now and len(vwap_series) >= lookback and vwap_series[-lookback] else None
 
-            # Efficient RSI calculation
             rsi_now = indicators.compute_rsi(closes, settings.RSI_PERIOD)
 
-            # Compute limited series for slope to save time
             rsi_series_limited = []
             for i in range(len(closes) - 5, len(closes)):
                 r = indicators.compute_rsi(closes[:i+1], settings.RSI_PERIOD)
@@ -302,21 +288,11 @@ async def update_loop():
 
             await update_trades(poly_snapshot["prices"] if poly_snapshot["ok"] else {})
 
-            # CSV Logging
             signal_label = f"BUY {decision['side']}" if decision["action"] == "ENTER" else "NO TRADE"
             utils.append_csv_row("./logs/signals.csv", csv_header, [
-                datetime.now().isoformat(),
-                timing["elapsedMinutes"],
-                time_left_min,
-                regime_info["regime"],
-                signal_label,
-                time_aware["adjustedUp"],
-                time_aware["adjustedDown"],
-                market_up,
-                market_down,
-                edge["edgeUp"],
-                edge["edgeDown"],
-                f"{decision['side']}:{decision['phase']}:{decision['strength']}" if decision["action"] == "ENTER" else "NO_TRADE"
+                datetime.now().isoformat(), timing["elapsedMinutes"], time_left_min, regime_info["regime"],
+                signal_label, time_aware["adjustedUp"], time_aware["adjustedDown"], market_up, market_down,
+                edge["edgeUp"], edge["edgeDown"], f"{decision['side']}:{decision['phase']}:{decision['strength']}" if decision["action"] == "ENTER" else "NO_TRADE"
             ])
 
             state["latest_data"] = {
@@ -327,7 +303,8 @@ async def update_loop():
                     "mode": state["trading_mode"],
                     "balance": state["paper_balance"],
                     "active_trades": state["active_trades"],
-                    "history_count": len(state["trade_history"])
+                    "history_count": len(state["trade_history"]),
+                    "risk": {"type": settings.RISK_TYPE, "value": settings.RISK_VALUE}
                 },
                 "prices": {
                     "spot": spot_price,
@@ -336,24 +313,16 @@ async def update_loop():
                     "poly_down": market_down
                 },
                 "indicators": {
-                    "rsi": rsi_now,
-                    "vwap": vwap_now,
-                    "macd": macd,
-                    "heiken": consec
+                    "rsi": rsi_now, "vwap": vwap_now, "macd": macd, "heiken": consec
                 },
                 "analysis": {
-                    "regime": regime_info,
-                    "probability": time_aware,
-                    "edge": edge,
-                    "decision": decision
+                    "regime": regime_info, "probability": time_aware, "edge": edge, "decision": decision
                 }
             }
             state["last_update_ts"] = time.time()
 
         except Exception as e:
             print(f"Error in update loop: {e}")
-            import traceback
-            traceback.print_exc()
 
         await asyncio.sleep(settings.POLL_INTERVAL_MS / 1000)
 
