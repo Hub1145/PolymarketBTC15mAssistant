@@ -47,13 +47,18 @@ docker run -p 8000:8000 polymarket-assistant
 
 ## Deployment on Render
 
-This project includes a `render.yaml` for easy deployment on [Render](https://render.com).
+If you are seeing errors related to Node.js or `npm run start`, it is because Render is auto-detecting the old environment. **You must manually set the runtime to Python.**
 
-1. Connect your GitHub repository to Render.
-2. Select **Blueprint** and it will automatically use the `render.yaml` configuration.
-3. Or create a **Web Service**, choose the **Python** runtime, and set the following:
+### Recommended: Use `render.yaml`
+The repository includes a `render.yaml`. When creating a new blueprint on Render, it will automatically set the correct environment.
+
+### Manual Setup
+1. Create a **Web Service** on Render.
+2. Under **Runtime**, explicitly select **Python 3**.
+3. Set the following commands:
    - **Build Command**: `pip install -r requirements.txt`
    - **Start Command**: `uvicorn main:app --host 0.0.0.0 --port 8000`
+4. Add any necessary environment variables (optional).
 
 ## Safety
 
