@@ -2,20 +2,23 @@
 
 A real-time trading assistant for Polymarket **"Bitcoin Up or Down" 15-minute** markets, ported to Python and FastAPI.
 
-It combines:
-- Polymarket market selection + UP/DOWN prices + liquidity
-- Polymarket live WS **Chainlink BTC/USD CURRENT PRICE**
-- Fallback to on-chain Chainlink (Polygon) via HTTP RPC
-- Binance spot price for reference
-- Short-term TA snapshot (Heiken Ashi, RSI, MACD, VWAP, Delta 1/3m)
-- A simple live **Predict (LONG/SHORT %)** derived from the assistant’s current TA scoring
+It features a **Real-Time Web Dashboard** with TA indicators, trade history, and paper/live trading modes.
+
+## Features
+
+- Real-time Web Dashboard (FastAPI + Jinja2 + Alpine.js)
+- Technical Indicators: RSI, MACD, Heiken Ashi, VWAP
+- Trade Execution: Paper Trading simulation vs Live Mode toggle
+- Data Sources: Binance, Polymarket (Gamma/CLOB), Chainlink (WebSocket + RPC)
+- Proxy Support: Global HTTP/HTTPS/SOCKS proxy configuration
+- Logging: CSV signal logging
 
 ## Requirements
 
 - Python **3.11+**
 - pip (comes with Python)
 
-## Run from terminal
+## Local Run
 
 ### 1) Install dependencies
 
@@ -23,14 +26,9 @@ It combines:
 pip install -r requirements.txt
 ```
 
-### 2) (Optional) Set environment variables
+### 2) Configure `config.json`
 
-You can run without extra config (defaults are included), but for more stable Chainlink fallback it’s recommended to set at least one Polygon RPC.
-
-```bash
-export POLYGON_RPC_URL="https://polygon-rpc.com"
-export POLYGON_RPC_URLS="https://polygon-rpc.com,https://rpc.ankr.com/polygon"
-```
+Set your trading mode, risk preferences, and optional private key in `config.json`.
 
 ### 3) Run
 
@@ -38,24 +36,24 @@ export POLYGON_RPC_URLS="https://polygon-rpc.com,https://rpc.ankr.com/polygon"
 uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-## Docker
+Access the dashboard at `http://localhost:8000`.
 
-### Build and Run
+## Docker
 
 ```bash
 docker build -t polymarket-assistant .
 docker run -p 8000:8000 polymarket-assistant
 ```
 
-## API Endpoints
+## Deployment on Render
 
-- `GET /` - Returns the latest analysis, market data, and predictions.
-- `GET /health` - Returns the service health status and last update timestamp.
+This project includes a `render.yaml` for easy deployment on [Render](https://render.com).
 
-## Notes / Troubleshooting
-
-- Ensure you have a stable internet connection for WebSocket price streams.
-- If no Chainlink updates are visible, verify your Polygon RPC URLs.
+1. Connect your GitHub repository to Render.
+2. Select **Blueprint** and it will automatically use the `render.yaml` configuration.
+3. Or create a **Web Service**, choose the **Python** runtime, and set the following:
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `uvicorn main:app --host 0.0.0.0 --port 8000`
 
 ## Safety
 
