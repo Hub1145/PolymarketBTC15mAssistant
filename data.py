@@ -71,30 +71,46 @@ async def fetch_live_events_by_series_id(series_id: str, limit: int = 20) -> Lis
 
 async def fetch_available_15m_series() -> List[Dict]:
     url = f"{settings.GAMMA_BASE_URL}/events"
-    # Search for "Bitcoin Up or Down" or similar patterns
     params = {
         "active": "true",
         "closed": "false",
-        "limit": 50
+        "limit": 100,
+        "tag_id": "102467" # 15M tag
     }
     proxy = get_proxy_url_for(url)
     async with httpx.AsyncClient(proxy=proxy if proxy else None) as client:
-        res = await client.get(url, params=params)
-        res.raise_for_status()
-        events = res.json()
+        try:
+            res = await client.get(url, params=params)
+            res.raise_for_status()
+            events = res.json()
+        except:
+            events = []
 
     series_map = {}
+    # Common hardcoded series that are known to work
+    defaults = {
+        "10192": "Bitcoin Up or Down 15m",
+        "10212": "Ethereum Up or Down 15m"
+    }
+    for sid, name in defaults.items():
+        series_map[sid] = {"series_id": sid, "title": name}
+
     for e in events:
-        title = e.get("title", "").lower()
-        if "up or down" in title and "15-minute" in title:
-            series_id = e.get("series_id")
-            if series_id and series_id not in series_map:
-                series_map[series_id] = {
-                    "series_id": series_id,
-                    "title": e.get("title"),
-                    "slug": e.get("slug")
+        series_slug = e.get("seriesSlug", "")
+        if "up-or-down-15m" in series_slug:
+            sid = e.get("series_id")
+            if not sid and e.get("series") and isinstance(e["series"], list) and len(e["series"]) > 0:
+                sid = e["series"][0].get("id")
+
+            if sid:
+                asset = series_slug.split("-")[0].upper()
+                series_map[str(sid)] = {
+                    "series_id": str(sid),
+                    "title": f"{asset} Up or Down 15m",
+                    "slug": series_slug
                 }
-    return list(series_map.values())
+
+    return sorted(list(series_map.values()), key=lambda x: x["title"])
 
 def flatten_event_markets(events: List[Dict]) -> List[Dict]:
     out = []
