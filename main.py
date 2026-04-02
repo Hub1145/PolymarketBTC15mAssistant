@@ -38,10 +38,19 @@ def log_message(msg: str):
     if len(state["logs"]) > 100:
         state["logs"].pop(0)
 
+def get_ws_symbol_filter(symbol: str) -> str:
+    s = symbol.upper()
+    if s.endswith("USDT"):
+        return s[:-4].lower()
+    return s.lower()
+
 # Background task instances
 binance_stream = ws_data.BinanceTradeStream(symbol=settings.SYMBOL)
-polymarket_ws_stream = ws_data.PolymarketChainlinkStream(ws_url=settings.POLYMARKET_LIVE_DATA_WS_URL)
-chainlink_ws_stream = ws_data.ChainlinkPriceStream(aggregator=settings.CHAINLINK_BTC_USD_AGGREGATOR)
+polymarket_ws_stream = ws_data.PolymarketChainlinkStream(
+    ws_url=settings.POLYMARKET_LIVE_DATA_WS_URL,
+    symbol_includes=get_ws_symbol_filter(settings.SYMBOL)
+)
+chainlink_ws_stream = ws_data.ChainlinkPriceStream(aggregator=settings.get_aggregator(settings.SYMBOL))
 
 def get_candle_window_timing(window_minutes: int) -> Dict[str, float]:
     now_ms = time.time() * 1000
@@ -250,13 +259,20 @@ async def update_loop():
             poly_ws = polymarket_ws_stream.get_last()
             cl_ws = chainlink_ws_stream.get_last()
 
-            klines_1m, klines_5m, last_price, chainlink_data, poly_snapshot = await asyncio.gather(
+            results = await asyncio.gather(
                 data.fetch_klines(settings.SYMBOL, "1m", 240),
                 data.fetch_klines(settings.SYMBOL, "5m", 200),
                 data.fetch_last_price(settings.SYMBOL),
                 chainlink.chainlink_fetcher.fetch_chainlink_btc_usd(),
-                fetch_polymarket_snapshot()
+                fetch_polymarket_snapshot(),
+                return_exceptions=True
             )
+
+            klines_1m = results[0] if not isinstance(results[0], Exception) else []
+            klines_5m = results[1] if not isinstance(results[1], Exception) else []
+            last_price = results[2] if not isinstance(results[2], Exception) else None
+            chainlink_data = results[3] if not isinstance(results[3], Exception) else {}
+            poly_snapshot = results[4] if not isinstance(results[4], Exception) else {"ok": False}
 
             spot_price = binance_ws.get("price") or last_price
             current_price = poly_ws.get("price") or cl_ws.get("price") or chainlink_data.get("price")
@@ -459,6 +475,17 @@ async def post_settings(new_settings: Dict[str, Any]):
         binance_stream.close()
         binance_stream = ws_data.BinanceTradeStream(symbol=settings.SYMBOL)
         asyncio.create_task(binance_stream.start())
+
+        polymarket_ws_stream.close()
+        polymarket_ws_stream = ws_data.PolymarketChainlinkStream(
+            ws_url=settings.POLYMARKET_LIVE_DATA_WS_URL,
+            symbol_includes=get_ws_symbol_filter(settings.SYMBOL)
+        )
+        asyncio.create_task(polymarket_ws_stream.start())
+
+        chainlink_ws_stream.close()
+        chainlink_ws_stream = ws_data.ChainlinkPriceStream(aggregator=settings.get_aggregator(settings.SYMBOL))
+        asyncio.create_task(chainlink_ws_stream.start())
 
     return {"status": "ok"}
 

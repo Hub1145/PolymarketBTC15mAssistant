@@ -45,6 +45,20 @@ class Settings(BaseSettings):
     POLYGON_WSS_URLS: List[str] = [url.strip() for url in os.getenv("POLYGON_WSS_URLS", "").split(",") if url.strip()]
     CHAINLINK_BTC_USD_AGGREGATOR: str = os.getenv("CHAINLINK_BTC_USD_AGGREGATOR", "0xc907E116054Ad103354f2D350FD2514433D57F6f")
 
+    CHAINLINK_AGGREGATORS: Dict[str, str] = {
+        "BTC": "0xc907E116054Ad103354f2D350FD2514433D57F6f",
+        "ETH": "0xF9680D99D6C9589e2a93a78A04A279e509205945",
+        "SOL": "0x39771505D18301D239916F4C88367A6010F7D2e3",
+        "XRP": "0x3454796324D6469C3110996E2E10972688045F19",
+        "DOGE": "0xbAf93Ba318f77363f82E8896a2E830206121D506",
+        "BNB": "0x82a6C67606bdc0409f959f60608226064223A57c"
+    }
+
+    def get_aggregator(self, symbol: str) -> str:
+        s = symbol.upper()
+        if s.endswith("USDT"): s = s[:-4]
+        return self.CHAINLINK_AGGREGATORS.get(s, self.CHAINLINK_BTC_USD_AGGREGATOR)
+
     # Proxy
     HTTP_PROXY: str = os.getenv("HTTP_PROXY", os.getenv("http_proxy", ""))
     HTTPS_PROXY: str = os.getenv("HTTPS_PROXY", os.getenv("https_proxy", ""))
