@@ -256,7 +256,7 @@ async def seed_kline_buffers():
         )
         binance_kline_1m.set_candles(k1m)
         binance_kline_5m.set_candles(k5m)
-        log_message(f"Seeded Binance kline buffers for {settings.SYMBOL}")
+        log_message(f"Seeded Binance kline buffers (1m/5m) for {settings.SYMBOL}")
     except Exception as e:
         log_message(f"Failed to seed kline buffers: {e}")
 
@@ -318,6 +318,12 @@ async def update_loop():
             ha = indicators.compute_heiken_ashi(klines_1m)
             consec = indicators.count_consecutive(ha)
 
+            # 5m indicators
+            closes_5m = [c["close"] for c in klines_5m]
+            macd_5m = indicators.compute_macd(closes_5m, settings.MACD_FAST, settings.MACD_SLOW, settings.MACD_SIGNAL)
+            ha_5m = indicators.compute_heiken_ashi(klines_5m)
+            consec_5m = indicators.count_consecutive(ha_5m)
+
             failed_vwap_reclaim = False
             if vwap_now and len(vwap_series) >= 2:
                 failed_vwap_reclaim = closes[-1] < vwap_now and closes[-2] > vwap_series[-2]
@@ -339,7 +345,10 @@ async def update_loop():
                 "macd": macd,
                 "heikenColor": consec["color"],
                 "heikenCount": consec["count"],
-                "failedVwapReclaim": failed_vwap_reclaim
+                "failedVwapReclaim": failed_vwap_reclaim,
+                "macd_5m": macd_5m,
+                "heiken_5m_color": consec_5m["color"],
+                "heiken_5m_count": consec_5m["count"]
             })
 
             time_aware = engines.apply_time_awareness(scored["rawUp"], time_left_min, settings.CANDLE_WINDOW_MINUTES)
@@ -393,7 +402,12 @@ async def update_loop():
                     "poly_down": market_down
                 },
                 "indicators": {
-                    "rsi": rsi_now, "vwap": vwap_now, "macd": macd, "heiken": consec
+                    "rsi": rsi_now,
+                    "vwap": vwap_now,
+                    "macd": macd,
+                    "heiken": consec,
+                    "macd_5m": macd_5m,
+                    "heiken_5m": consec_5m
                 },
                 "analysis": {
                     "regime": regime_info, "probability": time_aware, "edge": edge, "decision": decision

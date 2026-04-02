@@ -42,6 +42,11 @@ def score_direction(inputs: Dict[str, Any]) -> Dict[str, float]:
     heiken_count = inputs.get("heikenCount")
     failed_vwap_reclaim = inputs.get("failedVwapReclaim")
 
+    # 5m indicators
+    macd_5m = inputs.get("macd_5m")
+    heiken_5m_color = inputs.get("heiken_5m_color")
+    heiken_5m_count = inputs.get("heiken_5m_count")
+
     up = 1.0
     down = 1.0
 
@@ -81,6 +86,19 @@ def score_direction(inputs: Dict[str, Any]) -> Dict[str, float]:
         if heiken_color == "green" and heiken_count >= 2:
             up += 1
         if heiken_color == "red" and heiken_count >= 2:
+            down += 1
+
+    # 5m Logic
+    if heiken_5m_color:
+        if heiken_5m_color == "green" and heiken_5m_count >= 2:
+            up += 1.5
+        if heiken_5m_color == "red" and heiken_5m_count >= 2:
+            down += 1.5
+
+    if macd_5m is not None and macd_5m.get("hist") is not None and macd_5m.get("histDelta") is not None:
+        if macd_5m["histDelta"] > 0:
+            up += 1
+        if macd_5m["histDelta"] < 0:
             down += 1
 
     if failed_vwap_reclaim is True:
