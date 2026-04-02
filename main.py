@@ -26,8 +26,17 @@ state = {
     "trading_mode": settings.MODE,
     "paper_balance": settings.PAPER_BALANCE_USD,
     "active_trades": [],
-    "trade_history": []
+    "trade_history": [],
+    "logs": []
 }
+
+def log_message(msg: str):
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    formatted = f"[{timestamp}] {msg}"
+    print(formatted)
+    state["logs"].append(formatted)
+    if len(state["logs"]) > 100:
+        state["logs"].pop(0)
 
 # Background task instances
 binance_stream = ws_data.BinanceTradeStream(symbol=settings.SYMBOL)
@@ -165,9 +174,9 @@ async def execute_trade(decision: Dict[str, Any], market_prices: Dict[str, Any],
     if state["trading_mode"] == "paper":
         state["paper_balance"] -= amount_to_risk
         state["active_trades"].append(trade)
-        print(f"Executed PAPER trade: {side} @ {price} for {market.get('slug')} (Amount: ${amount_to_risk:.2f})")
+        log_message(f"Executed PAPER trade: {side} @ {price} for {market.get('slug')} (Amount: ${amount_to_risk:.2f})")
     else:
-        print(f"LIVE mode enabled but execution not implemented. Mode: {state['trading_mode']}")
+        log_message(f"LIVE mode enabled but execution not implemented. Mode: {state['trading_mode']}")
 
 async def update_trades(current_prices: Dict[str, Any]):
     remaining_active = []
@@ -179,10 +188,49 @@ async def update_trades(current_prices: Dict[str, Any]):
 
         is_closed = market.get("closed", False)
         if is_closed:
+            # Determine outcome
+            # The original JS logic uses 'outcomePrices' to check which side won
+            # If the market is resolved, one price will be 1.0 (or 100) and the other 0.0
+            outcomes = market.get("outcomes", [])
+            if isinstance(outcomes, str): outcomes = json.loads(outcomes)
+            outcome_prices = market.get("outcomePrices", [])
+            if isinstance(outcome_prices, str): outcome_prices = json.loads(outcome_prices)
+
+            won = False
+            payout = 0.0
+
+            up_index = next((i for i, x in enumerate(outcomes) if x.lower() == settings.POLYMARKET_UP_LABEL.lower()), -1)
+            down_index = next((i for i, x in enumerate(outcomes) if x.lower() == settings.POLYMARKET_DOWN_LABEL.lower()), -1)
+
+            winning_index = -1
+            if outcome_prices:
+                try:
+                    # Find which index has price near 1.0
+                    for i, p in enumerate(outcome_prices):
+                        if float(p) > 0.9:
+                            winning_index = i
+                            break
+                except:
+                    pass
+
+            if winning_index != -1:
+                if trade["side"] == "UP" and winning_index == up_index:
+                    won = True
+                elif trade["side"] == "DOWN" and winning_index == down_index:
+                    won = True
+
+                if won:
+                    payout = trade["shares"] * 1.0 # Each share settles to $1
+                    state["paper_balance"] += payout
+                    trade["profit_loss"] = payout - trade["amount"]
+                    log_message(f"WIN: Trade for {trade['market_slug']} settled. Profit: ${trade['profit_loss']:.2f}")
+                else:
+                    trade["profit_loss"] = -trade["amount"]
+                    log_message(f"LOSS: Trade for {trade['market_slug']} settled. Loss: ${trade['profit_loss']:.2f}")
+
             trade["status"] = "CLOSED"
             trade["exit_time"] = datetime.now().isoformat()
             state["trade_history"].append(trade)
-            print(f"Trade for {trade['market_slug']} closed (Simulated)")
         else:
             remaining_active.append(trade)
 
@@ -345,6 +393,10 @@ async def get_settings_page(request: Request):
 @app.get("/api/latest")
 async def get_latest():
     return state["latest_data"]
+
+@app.get("/api/logs")
+async def get_logs():
+    return state["logs"]
 
 @app.get("/api/available-series")
 async def get_available_series():

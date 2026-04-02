@@ -6,8 +6,12 @@
     <title>Polymarket BTC 15m Assistant Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        [x-cloak] { display: none !important; }
+        .font-mono { font-family: 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', monospace; }
+    </style>
 </head>
-<body class="bg-gray-900 text-white min-h-screen p-8" x-data="assistantData()">
+<body class="bg-gray-900 text-white min-h-screen p-8" x-data="assistantData()" x-cloak>
     <div class="max-w-6xl mx-auto">
         <header class="flex justify-between items-center mb-8">
             <h1 class="text-3xl font-bold text-blue-400" x-text="(data.trading_state?.symbol || 'BTC') + ' 15m Assistant'"></h1>
@@ -58,9 +62,11 @@
                     <p class="text-green-400 text-4xl font-bold" x-text="(data.analysis?.probability?.adjustedUp * 100).toFixed(1) + '%'"></p>
                     <p class="text-xs text-gray-500">PROB UP</p>
                 </div>
-                <div class="text-5xl font-black" :class="data.analysis?.decision?.action === 'ENTER' ? (data.analysis?.decision?.side === 'UP' ? 'text-green-500' : 'text-red-500') : 'text-gray-600'">
-                    <span x-text="data.analysis?.decision?.action === 'ENTER' ? (data.analysis?.decision?.side === 'UP' ? 'BUY UP ↑' : 'BUY DOWN ↓') : 'NO TRADE'"></span>
-                    <p class="text-xs uppercase mt-2 text-gray-400" x-text="data.analysis?.decision?.reason || ''"></p>
+                <div class="text-center">
+                    <div class="text-5xl font-black mb-2" :class="data.analysis?.decision?.action === 'ENTER' ? (data.analysis?.decision?.side === 'UP' ? 'text-green-500' : 'text-red-500') : 'text-gray-600'">
+                        <span x-text="data.analysis?.decision?.action === 'ENTER' ? (data.analysis?.decision?.side === 'UP' ? 'BUY UP ↑' : 'BUY DOWN ↓') : 'NO TRADE'"></span>
+                    </div>
+                    <p class="text-xs uppercase text-gray-400 font-bold" x-text="data.analysis?.decision?.reason || ''"></p>
                 </div>
                 <div class="text-center">
                     <p class="text-red-400 text-4xl font-bold" x-text="(data.analysis?.probability?.adjustedDown * 100).toFixed(1) + '%'"></p>
@@ -112,38 +118,97 @@
             </div>
         </div>
 
-        <!-- Trading History & State -->
-        <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
-            <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
-                <h3 class="text-xl font-bold">Paper Trading Session</h3>
-                <span class="text-2xl font-bold text-green-500" x-text="'$' + (data.trading_state?.balance?.toLocaleString() || '1,000')"></span>
+        <!-- Tabs -->
+        <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
+            <div class="flex bg-gray-700">
+                <button @click="tab = 'active'" :class="tab === 'active' ? 'bg-gray-800 text-blue-400' : 'text-gray-400 hover:text-white'" class="px-6 py-3 font-bold uppercase text-sm transition">Active Trades</button>
+                <button @click="tab = 'history'" :class="tab === 'history' ? 'bg-gray-800 text-blue-400' : 'text-gray-400 hover:text-white'" class="px-6 py-3 font-bold uppercase text-sm transition">Closed Trades</button>
+                <button @click="tab = 'logs'" :class="tab === 'logs' ? 'bg-gray-800 text-blue-400' : 'text-gray-400 hover:text-white'" class="px-6 py-3 font-bold uppercase text-sm transition">Console Log</button>
             </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left">
-                    <thead>
-                        <tr class="text-gray-500 text-sm">
-                            <th class="pb-2">Market</th>
-                            <th class="pb-2">Side</th>
-                            <th class="pb-2">Entry</th>
-                            <th class="pb-2">Shares</th>
-                            <th class="pb-2 text-right">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody class="text-sm">
-                        <template x-for="trade in data.trading_state?.active_trades" :key="trade.market_id">
-                            <tr class="border-t border-gray-700">
-                                <td class="py-2 truncate max-w-[200px]" x-text="trade.market_slug"></td>
-                                <td class="py-2" :class="trade.side === 'UP' ? 'text-green-400' : 'text-red-400'" x-text="trade.side"></td>
-                                <td class="py-2" x-text="(trade.entry_price * 100).toFixed(0) + '¢'"></td>
-                                <td class="py-2" x-text="trade.shares.toFixed(2)"></td>
-                                <td class="py-2 text-right text-yellow-500 font-bold" x-text="trade.status"></td>
-                            </tr>
+
+            <div class="p-6">
+                <!-- Active Trades -->
+                <div x-show="tab === 'active'">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-xl font-bold">Current Session Balance</h3>
+                        <span class="text-2xl font-bold text-green-500" x-text="'$' + (data.trading_state?.balance?.toLocaleString() || '1,000')"></span>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead>
+                                <tr class="text-gray-500 text-sm">
+                                    <th class="pb-2">Market</th>
+                                    <th class="pb-2">Side</th>
+                                    <th class="pb-2">Entry</th>
+                                    <th class="pb-2">Shares</th>
+                                    <th class="pb-2 text-right">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody class="text-sm">
+                                <template x-for="trade in data.trading_state?.active_trades" :key="trade.market_id">
+                                    <tr class="border-t border-gray-700">
+                                        <td class="py-2 truncate max-w-[200px]" x-text="trade.market_slug"></td>
+                                        <td class="py-2" :class="trade.side === 'UP' ? 'text-green-400' : 'text-red-400'" x-text="trade.side"></td>
+                                        <td class="py-2" x-text="(trade.entry_price * 100).toFixed(0) + '¢'"></td>
+                                        <td class="py-2" x-text="trade.shares.toFixed(2)"></td>
+                                        <td class="py-2 text-right text-yellow-500 font-bold" x-text="trade.status"></td>
+                                    </tr>
+                                </template>
+                                <tr x-show="!data.trading_state?.active_trades?.length">
+                                    <td colspan="5" class="py-4 text-center text-gray-600 italic text-xs">No active trades found. Looking for edge...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Closed Trades -->
+                <div x-show="tab === 'history'">
+                    <h3 class="text-xl font-bold mb-4">Trade History</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead>
+                                <tr class="text-gray-500 text-sm">
+                                    <th class="pb-2">Market</th>
+                                    <th class="pb-2">Side</th>
+                                    <th class="pb-2">Entry</th>
+                                    <th class="pb-2">P/L</th>
+                                    <th class="pb-2 text-right">Settled</th>
+                                </tr>
+                            </thead>
+                            <tbody class="text-sm">
+                                <template x-for="trade in tradeHistory" :key="trade.entry_time">
+                                    <tr class="border-t border-gray-700">
+                                        <td class="py-2 truncate max-w-[200px]" x-text="trade.market_slug"></td>
+                                        <td class="py-2" :class="trade.side === 'UP' ? 'text-green-400' : 'text-red-400'" x-text="trade.side"></td>
+                                        <td class="py-2" x-text="(trade.entry_price * 100).toFixed(0) + '¢'"></td>
+                                        <td class="py-2 font-bold" :class="trade.profit_loss > 0 ? 'text-green-400' : 'text-red-400'" x-text="(trade.profit_loss > 0 ? '+$' : '-$') + Math.abs(trade.profit_loss).toFixed(2)"></td>
+                                        <td class="py-2 text-right text-gray-500" x-text="new Date(trade.exit_time).toLocaleTimeString()"></td>
+                                    </tr>
+                                </template>
+                                <tr x-show="!tradeHistory.length">
+                                    <td colspan="5" class="py-4 text-center text-gray-600">No closed trades yet.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Logs -->
+                <div x-show="tab === 'logs'">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-xl font-bold">Application Logs</h3>
+                        <button @click="logs = []" class="text-xs text-gray-500 hover:text-white uppercase font-bold">Clear</button>
+                    </div>
+                    <div class="bg-black rounded p-4 h-64 overflow-y-auto font-mono text-xs leading-relaxed">
+                        <template x-for="log in logs" :key="log">
+                            <div class="mb-1" :class="log.includes('WIN') ? 'text-green-400' : (log.includes('LOSS') ? 'text-red-400' : 'text-gray-300')">
+                                <span x-text="log"></span>
+                            </div>
                         </template>
-                        <tr x-show="!data.trading_state?.active_trades?.length">
-                            <td colspan="5" class="py-4 text-center text-gray-600">No active trades</td>
-                        </tr>
-                    </tbody>
-                </table>
+                        <div x-show="!logs.length" class="text-gray-700 italic">Listening for system events...</div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -153,18 +218,37 @@
             return {
                 data: {},
                 lastUpdate: '-',
+                tab: 'active',
+                logs: [],
+                tradeHistory: [],
                 init() {
                     this.refresh();
                     setInterval(() => this.refresh(), 1000);
+                    setInterval(() => this.refreshLogs(), 2000);
                 },
                 async refresh() {
                     try {
                         const response = await fetch('/api/latest');
                         this.data = await response.json();
                         this.lastUpdate = new Date().toLocaleTimeString();
+
+                        // Check for history update
+                        if (this.tab === 'history') {
+                            const hRes = await fetch('/history');
+                            this.tradeHistory = await hRes.json();
+                            this.tradeHistory.reverse(); // Newest first
+                        }
                     } catch (e) {
                         console.error("Refresh failed", e);
                     }
+                },
+                async refreshLogs() {
+                    if (this.tab !== 'logs') return;
+                    try {
+                        const response = await fetch('/api/logs');
+                        this.logs = await response.json();
+                        this.logs.reverse(); // Newest first
+                    } catch (e) {}
                 },
                 formatTime(mins) {
                     if (!mins && mins !== 0) return '--:--';
