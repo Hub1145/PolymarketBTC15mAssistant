@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - Polymarket Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen p-8" x-data="settingsPage()">
+    <div class="max-w-4xl mx-auto">
+        <header class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold text-blue-400">Application Settings</h1>
+            <a href="/" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded font-bold">Back to Dashboard</a>
+        </header>
+
+        <form @submit.prevent="saveSettings" class="space-y-8">
+            <!-- Mode & Balance -->
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+                <h2 class="text-xl font-bold mb-4 border-b border-gray-700 pb-2">Trading Mode</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label class="block text-gray-400 text-sm mb-2 uppercase">Mode</label>
+                        <select x-model="form.mode" class="w-full bg-gray-700 border-none rounded p-2 text-white">
+                            <option value="paper">Paper Trading</option>
+                            <option value="live">Live Trading</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-gray-400 text-sm mb-2 uppercase">Initial Paper Balance (USD)</label>
+                        <input type="number" x-model.number="form.paper_balance_usd" class="w-full bg-gray-700 border-none rounded p-2 text-white">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Risk Management -->
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+                <h2 class="text-xl font-bold mb-4 border-b border-gray-700 pb-2">Risk Management</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label class="block text-gray-400 text-sm mb-2 uppercase">Risk Type</label>
+                        <select x-model="form.trading.risk_type" class="w-full bg-gray-700 border-none rounded p-2 text-white">
+                            <option value="fixed">Fixed Amount ($)</option>
+                            <option value="percent">Percentage of Balance (%)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-gray-400 text-sm mb-2 uppercase">Risk Value</label>
+                        <input type="number" step="0.01" x-model.number="form.trading.risk_value" class="w-full bg-gray-700 border-none rounded p-2 text-white">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Markets -->
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+                <h2 class="text-xl font-bold mb-4 border-b border-gray-700 pb-2">Market Configuration</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label class="block text-gray-400 text-sm mb-2 uppercase">Binance Symbol</label>
+                        <input type="text" x-model="form.trading.symbol" class="w-full bg-gray-700 border-none rounded p-2 text-white" placeholder="BTCUSDT">
+                    </div>
+                    <div>
+                        <label class="block text-gray-400 text-sm mb-2 uppercase">Polymarket Series</label>
+                        <select x-model="form.polymarket.series_id" class="w-full bg-gray-700 border-none rounded p-2 text-white">
+                            <template x-for="s in availableSeries" :key="s.series_id">
+                                <option :value="s.series_id" x-text="s.title" :selected="s.series_id == form.polymarket.series_id"></option>
+                            </template>
+                        </select>
+                        <p class="text-xs text-gray-500 mt-1" x-show="!availableSeries.length">No series found or loading...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Secrets -->
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+                <h2 class="text-xl font-bold mb-4 border-b border-gray-700 pb-2">Credentials</h2>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-gray-400 text-sm mb-2 uppercase">Private Key</label>
+                        <input type="password" x-model="form.private_key" class="w-full bg-gray-700 border-none rounded p-2 text-white" placeholder="0x...">
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex justify-end">
+                <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition duration-200">
+                    Save All Settings
+                </button>
+            </div>
+        </form>
+
+        <div x-show="message" x-text="message" class="mt-4 p-4 rounded text-center font-bold"
+             :class="messageType === 'success' ? 'bg-green-800 text-green-100' : 'bg-red-800 text-red-100'"></div>
+    </div>
+
+    <script>
+        function settingsPage() {
+            return {
+                form: {
+                    mode: 'paper',
+                    paper_balance_usd: 1000,
+                    private_key: '',
+                    polymarket: { series_id: '' },
+                    trading: { symbol: '', risk_type: 'percent', risk_value: 10 }
+                },
+                message: '',
+                messageType: '',
+                availableSeries: [],
+                async init() {
+                    try {
+                        const [res, sRes] = await Promise.all([
+                            fetch('/api/settings').then(r => r.json()),
+                            fetch('/api/available-series').then(r => r.json())
+                        ]);
+                        this.form = res;
+                        this.availableSeries = sRes;
+                    } catch (e) {
+                        console.error("Failed to load settings", e);
+                    }
+                },
+                async saveSettings() {
+                    try {
+                        const res = await fetch('/api/settings', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(this.form)
+                        });
+                        if (res.ok) {
+                            this.message = "Settings saved successfully! Restarting data streams...";
+                            this.messageType = 'success';
+                            setTimeout(() => this.message = '', 3000);
+                        } else {
+                            throw new Error("Failed to save");
+                        }
+                    } catch (e) {
+                        this.message = "Error saving settings";
+                        this.messageType = 'error';
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>

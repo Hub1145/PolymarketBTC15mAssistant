@@ -304,7 +304,8 @@ async def update_loop():
                     "balance": state["paper_balance"],
                     "active_trades": state["active_trades"],
                     "history_count": len(state["trade_history"]),
-                    "risk": {"type": settings.RISK_TYPE, "value": settings.RISK_VALUE}
+                    "risk": {"type": settings.RISK_TYPE, "value": settings.RISK_VALUE},
+                    "symbol": settings.SYMBOL
                 },
                 "prices": {
                     "spot": spot_price,
@@ -337,9 +338,77 @@ async def startup_event():
 async def get_dashboard(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
+@app.get("/settings", response_class=HTMLResponse)
+async def get_settings_page(request: Request):
+    return templates.TemplateResponse("settings.html", {"request": request})
+
 @app.get("/api/latest")
 async def get_latest():
     return state["latest_data"]
+
+@app.get("/api/available-series")
+async def get_available_series():
+    return await data.fetch_available_15m_series()
+
+@app.get("/api/settings")
+async def get_settings():
+    # Return serializable version of settings
+    return {
+        "mode": settings.MODE,
+        "paper_balance_usd": settings.PAPER_BALANCE_USD,
+        "private_key": settings.PRIVATE_KEY,
+        "polymarket": {
+            "series_id": settings.POLYMARKET_SERIES_ID,
+            "gamma_base_url": settings.GAMMA_BASE_URL,
+            "clob_base_url": settings.CLOB_BASE_URL,
+            "live_ws_url": settings.POLYMARKET_LIVE_DATA_WS_URL,
+            "up_label": settings.POLYMARKET_UP_LABEL,
+            "down_label": settings.POLYMARKET_DOWN_LABEL
+        },
+        "trading": {
+            "symbol": settings.SYMBOL,
+            "risk_type": settings.RISK_TYPE,
+            "risk_value": settings.RISK_VALUE
+        }
+    }
+
+@app.post("/api/settings")
+async def post_settings(new_settings: Dict[str, Any]):
+    global binance_stream, polymarket_ws_stream
+
+    # Check if critical stream settings changed
+    old_symbol = settings.SYMBOL
+
+    # Save to config.json
+    with open("config.json", "w") as f:
+        json.dump(new_settings, f, indent=2)
+
+    settings.MODE = new_settings.get("mode", settings.MODE)
+    settings.PAPER_BALANCE_USD = float(new_settings.get("paper_balance_usd", settings.PAPER_BALANCE_USD))
+    settings.PRIVATE_KEY = new_settings.get("private_key", settings.PRIVATE_KEY)
+
+    if "trading" in new_settings:
+        t = new_settings["trading"]
+        settings.SYMBOL = t.get("symbol", settings.SYMBOL)
+        settings.RISK_TYPE = t.get("risk_type", settings.RISK_TYPE)
+        settings.RISK_VALUE = float(t.get("risk_value", settings.RISK_VALUE))
+
+    if "polymarket" in new_settings:
+        p = new_settings["polymarket"]
+        settings.POLYMARKET_SERIES_ID = p.get("series_id", settings.POLYMARKET_SERIES_ID)
+        settings.POLYMARKET_UP_LABEL = p.get("up_label", settings.POLYMARKET_UP_LABEL)
+        settings.POLYMARKET_DOWN_LABEL = p.get("down_label", settings.POLYMARKET_DOWN_LABEL)
+
+    state["trading_mode"] = settings.MODE
+    state["paper_balance"] = settings.PAPER_BALANCE_USD
+
+    # Restart streams if symbol changed
+    if settings.SYMBOL != old_symbol:
+        binance_stream.close()
+        binance_stream = ws_data.BinanceTradeStream(symbol=settings.SYMBOL)
+        asyncio.create_task(binance_stream.start())
+
+    return {"status": "ok"}
 
 @app.get("/health")
 async def health():

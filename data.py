@@ -69,6 +69,33 @@ async def fetch_live_events_by_series_id(series_id: str, limit: int = 20) -> Lis
         data = res.json()
     return data if isinstance(data, list) else []
 
+async def fetch_available_15m_series() -> List[Dict]:
+    url = f"{settings.GAMMA_BASE_URL}/events"
+    # Search for "Bitcoin Up or Down" or similar patterns
+    params = {
+        "active": "true",
+        "closed": "false",
+        "limit": 50
+    }
+    proxy = get_proxy_url_for(url)
+    async with httpx.AsyncClient(proxy=proxy if proxy else None) as client:
+        res = await client.get(url, params=params)
+        res.raise_for_status()
+        events = res.json()
+
+    series_map = {}
+    for e in events:
+        title = e.get("title", "").lower()
+        if "up or down" in title and "15-minute" in title:
+            series_id = e.get("series_id")
+            if series_id and series_id not in series_map:
+                series_map[series_id] = {
+                    "series_id": series_id,
+                    "title": e.get("title"),
+                    "slug": e.get("slug")
+                }
+    return list(series_map.values())
+
 def flatten_event_markets(events: List[Dict]) -> List[Dict]:
     out = []
     for e in events:

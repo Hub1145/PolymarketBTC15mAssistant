@@ -66,15 +66,29 @@ class PolymarketChainlinkStream:
                             continue
 
                         payload = data.get("payload", {})
+                        if isinstance(payload, str):
+                            try:
+                                payload = json.loads(payload)
+                            except:
+                                continue
+
                         symbol = str(payload.get("symbol") or payload.get("pair") or payload.get("ticker") or "").lower()
                         if self.symbol_includes and self.symbol_includes not in symbol:
                             continue
 
-                        price = float(payload.get("value") or payload.get("price") or payload.get("current") or payload.get("data"))
-                        updated_at = float(payload.get("timestamp") or payload.get("updatedAt")) * 1000
+                        try:
+                            price_val = payload.get("value") or payload.get("price") or payload.get("current") or payload.get("data")
+                            if price_val is None: continue
+                            price = float(price_val)
 
-                        self.last_price = price
-                        self.last_updated_at = updated_at
+                            ts_val = payload.get("timestamp") or payload.get("updatedAt")
+                            updated_at = float(ts_val) * 1000 if ts_val else time.time() * 1000
+
+                            self.last_price = price
+                            self.last_updated_at = updated_at
+                        except (ValueError, TypeError):
+                            continue
+
                         if self.on_update:
                             await self.on_update({"price": self.last_price, "updatedAt": self.last_updated_at, "source": "polymarket_ws"})
             except Exception as e:
