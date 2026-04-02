@@ -235,8 +235,8 @@ class ChainlinkPriceStream:
 
                                         if self.on_update:
                                             await self.on_update({"price": self.last_price, "updatedAt": self.last_updated_at, "source": "chainlink_ws"})
-                                elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
-                                    break
+                            elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
+                                break
             except Exception as e:
                 print(f"WS Error (Chainlink RPC): {e}")
                 if not self.closed:

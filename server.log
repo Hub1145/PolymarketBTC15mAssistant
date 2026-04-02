@@ -1,0 +1,361 @@
+INFO:     Started server process [1944249]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+ERROR:    [Errno 98] error while attempting to bind on address ('0.0.0.0', 8000): [errno 98] address already in use
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+[21:17:41] Failed to seed kline buffers: Client error '451 ' for url 'https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=5m&limit=200'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/451
+
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+Connected to Chainlink RPC WS: wss://polygon-bor-rpc.publicnode.com
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+Connected to Polymarket WS. Filter: btc
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+Connected to Chainlink RPC WS: wss://polygon-bor-rpc.publicnode.com
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+Connected to Polymarket WS. Filter: btc
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+Connected to Polymarket WS. Filter: btc
+WS Error (Polymarket): Expecting value: line 1 column 1 (char 0)
+WS Error (Binance Kline 5m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_5m'
+WS Error (Binance): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@trade'
+WS Error (Binance Kline 1m): 451, message='Invalid response status', url='wss://stream.binance.com:9443/ws/btcusdt@kline_1m'

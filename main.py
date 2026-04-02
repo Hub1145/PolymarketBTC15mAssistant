@@ -234,11 +234,22 @@ async def update_trades(current_prices: Dict[str, Any]):
                 if won:
                     payout = trade["shares"] * 1.0 # Each share settles to $1
                     state["paper_balance"] += payout
+                    settings.PAPER_BALANCE_USD = state["paper_balance"]
                     trade["profit_loss"] = payout - trade["amount"]
                     log_message(f"WIN: Trade for {trade['market_slug']} settled. Profit: ${trade['profit_loss']:.2f}")
                 else:
                     trade["profit_loss"] = -trade["amount"]
                     log_message(f"LOSS: Trade for {trade['market_slug']} settled. Loss: ${trade['profit_loss']:.2f}")
+
+                # Persist balance to config.json
+                try:
+                    with open("config.json", "r") as f:
+                        cfg = json.load(f)
+                    cfg["paper_balance_usd"] = state["paper_balance"]
+                    with open("config.json", "w") as f:
+                        json.dump(cfg, f, indent=2)
+                except:
+                    pass
 
             trade["status"] = "CLOSED"
             trade["exit_time"] = datetime.now().isoformat()
@@ -290,7 +301,20 @@ async def update_loop():
             klines_5m = binance_kline_5m.get_candles()
 
             spot_price = binance_ws.get("price") or last_price
-            current_price = poly_ws.get("price") or cl_ws.get("price") or chainlink_data.get("price")
+
+            # Polymarket Chainlink Price Logic with explicit source tracking
+            current_price = None
+            price_source = None
+
+            if poly_ws.get("price"):
+                current_price = poly_ws["price"]
+                price_source = "Polymarket WS"
+            elif cl_ws.get("price"):
+                current_price = cl_ws["price"]
+                price_source = "Chainlink RPC WS"
+            elif chainlink_data.get("price"):
+                current_price = chainlink_data["price"]
+                price_source = "Chainlink RPC REST"
 
             settlement_ms = None
             if poly_snapshot["ok"] and poly_snapshot["market"].get("endDate"):
@@ -398,6 +422,7 @@ async def update_loop():
                 "prices": {
                     "spot": spot_price,
                     "chainlink": current_price,
+                    "chainlink_source": price_source,
                     "poly_up": market_up,
                     "poly_down": market_down
                 },
@@ -456,10 +481,13 @@ async def get_available_series():
 @app.get("/api/settings")
 async def get_settings():
     # Return serializable version of settings
+    pk = settings.PRIVATE_KEY
+    masked_pk = pk[:6] + "..." + pk[-4:] if pk and len(pk) > 10 else pk
+
     return {
         "mode": settings.MODE,
         "paper_balance_usd": settings.PAPER_BALANCE_USD,
-        "private_key": settings.PRIVATE_KEY,
+        "private_key": masked_pk,
         "polymarket": {
             "series_id": settings.POLYMARKET_SERIES_ID,
             "gamma_base_url": settings.GAMMA_BASE_URL,
@@ -488,7 +516,10 @@ async def post_settings(new_settings: Dict[str, Any]):
 
     settings.MODE = new_settings.get("mode", settings.MODE)
     settings.PAPER_BALANCE_USD = float(new_settings.get("paper_balance_usd", settings.PAPER_BALANCE_USD))
-    settings.PRIVATE_KEY = new_settings.get("private_key", settings.PRIVATE_KEY)
+
+    new_pk = new_settings.get("private_key")
+    if new_pk and "..." not in new_pk:
+        settings.PRIVATE_KEY = new_pk
 
     if "trading" in new_settings:
         t = new_settings["trading"]
