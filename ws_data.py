@@ -44,6 +44,67 @@ class BinanceTradeStream:
     def close(self):
         self.closed = True
 
+class BinanceKlineStream:
+    def __init__(self, symbol: str, interval: str, limit: int = 240):
+        self.symbol = symbol.lower()
+        self.interval = interval
+        self.limit = limit
+        self.candles = []
+        self.closed = False
+
+    async def start(self):
+        url = f"wss://stream.binance.com:9443/ws/{self.symbol}@kline_{self.interval}"
+        while not self.closed:
+            try:
+                proxy = get_proxy_url_for(url)
+                async with aiohttp.ClientSession() as session:
+                    async with session.ws_connect(url, proxy=proxy if proxy else None) as ws:
+                        print(f"Connected to Binance Kline WS: {self.symbol} {self.interval}")
+                        while not self.closed:
+                            msg = await ws.receive()
+                            if msg.type == aiohttp.WSMsgType.TEXT:
+                                data = json.loads(msg.data)
+                                k = data.get("k", {})
+                                candle = {
+                                    "openTime": int(k.get("t")),
+                                    "open": float(k.get("o")),
+                                    "high": float(k.get("h")),
+                                    "low": float(k.get("l")),
+                                    "close": float(k.get("c")),
+                                    "volume": float(k.get("v")),
+                                    "closeTime": int(k.get("T")),
+                                    "isClosed": k.get("x")
+                                }
+
+                                if not self.candles:
+                                    self.candles.append(candle)
+                                else:
+                                    # Update current candle or append new one
+                                    if candle["openTime"] == self.candles[-1]["openTime"]:
+                                        self.candles[-1] = candle
+                                    else:
+                                        self.candles.append(candle)
+
+                                # Maintain limit
+                                if len(self.candles) > self.limit:
+                                    self.candles.pop(0)
+
+                            elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
+                                break
+            except Exception as e:
+                print(f"WS Error (Binance Kline {self.interval}): {e}")
+                if not self.closed:
+                    await asyncio.sleep(2)
+
+    def set_candles(self, candles: List[Dict]):
+        self.candles = candles[-self.limit:]
+
+    def get_candles(self):
+        return self.candles
+
+    def close(self):
+        self.closed = True
+
 class PolymarketChainlinkStream:
     def __init__(self, ws_url: str, symbol_includes: str = "btc", on_update: Optional[Callable] = None):
         self.ws_url = ws_url

@@ -46,6 +46,9 @@ def get_ws_symbol_filter(symbol: str) -> str:
 
 # Background task instances
 binance_stream = ws_data.BinanceTradeStream(symbol=settings.SYMBOL)
+binance_kline_1m = ws_data.BinanceKlineStream(symbol=settings.SYMBOL, interval="1m", limit=240)
+binance_kline_5m = ws_data.BinanceKlineStream(symbol=settings.SYMBOL, interval="5m", limit=200)
+
 polymarket_ws_stream = ws_data.PolymarketChainlinkStream(
     ws_url=settings.POLYMARKET_LIVE_DATA_WS_URL,
     symbol_includes=get_ws_symbol_filter(settings.SYMBOL)
@@ -245,6 +248,18 @@ async def update_trades(current_prices: Dict[str, Any]):
 
     state["active_trades"] = remaining_active
 
+async def seed_kline_buffers():
+    try:
+        k1m, k5m = await asyncio.gather(
+            data.fetch_klines(settings.SYMBOL, "1m", 240),
+            data.fetch_klines(settings.SYMBOL, "5m", 200)
+        )
+        binance_kline_1m.set_candles(k1m)
+        binance_kline_5m.set_candles(k5m)
+        log_message(f"Seeded Binance kline buffers for {settings.SYMBOL}")
+    except Exception as e:
+        log_message(f"Failed to seed kline buffers: {e}")
+
 async def update_loop():
     csv_header = [
         "timestamp", "entry_minute", "time_left_min", "regime", "signal",
@@ -260,19 +275,19 @@ async def update_loop():
             cl_ws = chainlink_ws_stream.get_last()
 
             results = await asyncio.gather(
-                data.fetch_klines(settings.SYMBOL, "1m", 240),
-                data.fetch_klines(settings.SYMBOL, "5m", 200),
                 data.fetch_last_price(settings.SYMBOL),
                 chainlink.chainlink_fetcher.fetch_chainlink_btc_usd(),
                 fetch_polymarket_snapshot(),
                 return_exceptions=True
             )
 
-            klines_1m = results[0] if not isinstance(results[0], Exception) else []
-            klines_5m = results[1] if not isinstance(results[1], Exception) else []
-            last_price = results[2] if not isinstance(results[2], Exception) else None
-            chainlink_data = results[3] if not isinstance(results[3], Exception) else {}
-            poly_snapshot = results[4] if not isinstance(results[4], Exception) else {"ok": False}
+            last_price = results[0] if not isinstance(results[0], Exception) else None
+            chainlink_data = results[1] if not isinstance(results[1], Exception) else {}
+            poly_snapshot = results[2] if not isinstance(results[2], Exception) else {"ok": False}
+
+            # Use real-time WebSocket buffers for indicators
+            klines_1m = binance_kline_1m.get_candles()
+            klines_5m = binance_kline_5m.get_candles()
 
             spot_price = binance_ws.get("price") or last_price
             current_price = poly_ws.get("price") or cl_ws.get("price") or chainlink_data.get("price")
@@ -393,7 +408,13 @@ async def update_loop():
 
 @app.on_event("startup")
 async def startup_event():
+    # Initial seeding
+    await seed_kline_buffers()
+
+    # Start all background tasks
     asyncio.create_task(binance_stream.start())
+    asyncio.create_task(binance_kline_1m.start())
+    asyncio.create_task(binance_kline_5m.start())
     asyncio.create_task(polymarket_ws_stream.start())
     asyncio.create_task(chainlink_ws_stream.start())
     asyncio.create_task(update_loop())
@@ -442,7 +463,7 @@ async def get_settings():
 
 @app.post("/api/settings")
 async def post_settings(new_settings: Dict[str, Any]):
-    global binance_stream, polymarket_ws_stream
+    global binance_stream, polymarket_ws_stream, chainlink_ws_stream, binance_kline_1m, binance_kline_5m
 
     # Check if critical stream settings changed
     old_symbol = settings.SYMBOL
@@ -475,6 +496,17 @@ async def post_settings(new_settings: Dict[str, Any]):
         binance_stream.close()
         binance_stream = ws_data.BinanceTradeStream(symbol=settings.SYMBOL)
         asyncio.create_task(binance_stream.start())
+
+        binance_kline_1m.close()
+        binance_kline_1m = ws_data.BinanceKlineStream(symbol=settings.SYMBOL, interval="1m", limit=240)
+        asyncio.create_task(binance_kline_1m.start())
+
+        binance_kline_5m.close()
+        binance_kline_5m = ws_data.BinanceKlineStream(symbol=settings.SYMBOL, interval="5m", limit=200)
+        asyncio.create_task(binance_kline_5m.start())
+
+        # Reseed buffers for new symbol
+        await seed_kline_buffers()
 
         polymarket_ws_stream.close()
         polymarket_ws_stream = ws_data.PolymarketChainlinkStream(
