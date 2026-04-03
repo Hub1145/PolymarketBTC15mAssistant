@@ -39,7 +39,7 @@
             <!-- Risk Management -->
             <div class="bg-gray-800 p-5 sm:p-6 rounded-lg shadow-lg">
                 <h2 class="text-lg sm:text-xl font-bold mb-4 border-b border-gray-700 pb-2">Risk Management</h2>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                     <div>
                         <label class="block text-gray-400 text-xs sm:text-sm mb-2 uppercase font-bold tracking-wider">Risk Type</label>
                         <select x-model="form.trading.risk_type" class="w-full bg-gray-700 border-none rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500 transition">
@@ -50,6 +50,21 @@
                     <div>
                         <label class="block text-gray-400 text-xs sm:text-sm mb-2 uppercase font-bold tracking-wider">Risk Value</label>
                         <input type="number" step="0.01" x-model.number="form.trading.risk_value" class="w-full bg-gray-700 border-none rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500 transition">
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <label class="flex items-center cursor-pointer mt-6">
+                            <input type="checkbox" x-model="form.trading.use_tp_sl" class="sr-only peer">
+                            <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                            <span class="ml-3 text-sm font-medium text-gray-300">Use TP/SL</span>
+                        </label>
+                    </div>
+                    <div x-show="form.trading.use_tp_sl">
+                        <label class="block text-gray-400 text-xs sm:text-sm mb-2 uppercase font-bold tracking-wider">Take Profit (¢)</label>
+                        <input type="number" step="1" x-model.number="tp_cents" @input="form.trading.tp_value = tp_cents / 100" class="w-full bg-gray-700 border-none rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500 transition">
+                    </div>
+                    <div x-show="form.trading.use_tp_sl">
+                        <label class="block text-gray-400 text-xs sm:text-sm mb-2 uppercase font-bold tracking-wider">Stop Loss (¢)</label>
+                        <input type="number" step="1" x-model.number="sl_cents" @input="form.trading.sl_value = sl_cents / 100" class="w-full bg-gray-700 border-none rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500 transition">
                     </div>
                 </div>
             </div>
@@ -107,6 +122,8 @@
                 message: '',
                 messageType: '',
                 availableSeries: [],
+                tp_cents: 80,
+                sl_cents: 10,
                 async init() {
                     try {
                         const [res, sRes] = await Promise.all([
@@ -114,6 +131,8 @@
                             fetch('/api/available-series').then(r => r.json())
                         ]);
                         this.form = res;
+                        this.tp_cents = Math.round(this.form.trading.tp_value * 100);
+                        this.sl_cents = Math.round(this.form.trading.sl_value * 100);
                         this.availableSeries = sRes;
                     } catch (e) {
                         console.error("Failed to load settings", e);

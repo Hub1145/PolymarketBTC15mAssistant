@@ -20,14 +20,17 @@ class Settings(BaseSettings):
 
     RISK_TYPE: str = "percent"  # "percent" or "fixed"
     RISK_VALUE: float = 10.0
+    USE_TP_SL: bool = True
+    TP_VALUE: float = 0.8
+    SL_VALUE: float = 0.1
 
     VWAP_SLOPE_LOOKBACK_MINUTES: int = 5
-    RSI_PERIOD: int = 14
-    RSI_MA_PERIOD: int = 14
+    RSI_PERIOD: int = 7
+    RSI_MA_PERIOD: int = 7
 
-    MACD_FAST: int = 12
-    MACD_SLOW: int = 26
-    MACD_SIGNAL: int = 9
+    MACD_FAST: int = 5
+    MACD_SLOW: int = 13
+    MACD_SIGNAL: int = 3
 
     # Polymarket
     POLYMARKET_SLUG: str = os.getenv("POLYMARKET_SLUG", "")
@@ -95,6 +98,9 @@ def load_settings():
                 if "poll_interval_ms" in trading: base_settings.POLL_INTERVAL_MS = trading["poll_interval_ms"]
                 if "risk_type" in trading: base_settings.RISK_TYPE = trading["risk_type"]
                 if "risk_value" in trading: base_settings.RISK_VALUE = trading["risk_value"]
+                if "use_tp_sl" in trading: base_settings.USE_TP_SL = trading["use_tp_sl"]
+                if "tp_value" in trading: base_settings.TP_VALUE = trading["tp_value"]
+                if "sl_value" in trading: base_settings.SL_VALUE = trading["sl_value"]
 
             if "chainlink" in config_data:
                 cl = config_data["chainlink"]

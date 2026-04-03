@@ -31,133 +31,146 @@ def detect_regime(inputs: Dict[str, Any]) -> Dict[str, str]:
 
     return {"regime": "RANGE", "reason": "default"}
 
-def score_direction(inputs: Dict[str, Any]) -> Dict[str, float]:
+def score_direction(inputs: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Implements scoring for the Mean Reversion strategy.
+    Returns scores for 'UP' and 'DOWN' entries.
+    """
     price = inputs.get("price")
     vwap = inputs.get("vwap")
-    vwap_slope = inputs.get("vwapSlope")
     rsi = inputs.get("rsi")
-    rsi_slope = inputs.get("rsiSlope")
-    macd = inputs.get("macd")
-    heiken_color = inputs.get("heikenColor")
-    heiken_count = inputs.get("heikenCount")
-    failed_vwap_reclaim = inputs.get("failedVwapReclaim")
+    macd = inputs.get("macd")  # expects dict with 'hist' and 'histDelta'
+    ha_candles = inputs.get("ha_candles", []) # Last 1-minute HA candles
 
-    # 5m indicators
-    macd_5m = inputs.get("macd_5m")
-    heiken_5m_color = inputs.get("heiken_5m_color")
-    heiken_5m_count = inputs.get("heiken_5m_count")
+    up_score = 0
+    down_score = 0
 
-    up = 1.0
-    down = 1.0
+    reasons_up = []
+    reasons_down = []
 
-    if price is not None and vwap is not None:
-        if price > vwap:
-            up += 2
-        if price < vwap:
-            down += 2
+    # 1. RSI
+    if rsi is not None:
+        if rsi < 28:
+            up_score += 1
+            reasons_up.append("RSI < 28")
+        if rsi > 72:
+            down_score += 1
+            reasons_down.append("RSI > 72")
 
-    if vwap_slope is not None:
-        if vwap_slope > 0:
-            up += 2
-        if vwap_slope < 0:
-            down += 2
+    # 2. MACD Histogram
+    # Signal for "Up" buy: Histogram RISING (3 consecutive increases) AND still negative
+    if macd and macd.get("hist_series") and len(macd["hist_series"]) >= 3:
+        h = macd["hist_series"]
+        # Up
+        if h[-1] < 0 and h[-1] > h[-2] and h[-2] > h[-3]:
+            up_score += 1
+            reasons_up.append("MACD Hist Rising (Neg)")
+        # Down
+        if h[-1] > 0 and h[-1] < h[-2] and h[-2] < h[-3]:
+            down_score += 1
+            reasons_down.append("MACD Hist Falling (Pos)")
 
-    if rsi is not None and rsi_slope is not None:
-        if rsi > 55 and rsi_slope > 0:
-            up += 2
-        if rsi < 45 and rsi_slope < 0:
-            down += 2
+    # 3. VWAP Deviation
+    if price and vwap:
+        dev = (price - vwap) / vwap
+        if dev <= -0.0015: # -0.15%
+            up_score += 1
+            reasons_up.append(f"VWAP Dev {dev*100:.2f}%")
+        if dev >= 0.0015: # +0.15%
+            down_score += 1
+            reasons_down.append(f"VWAP Dev {dev*100:.2f}%")
 
-    if macd is not None and macd.get("hist") is not None and macd.get("histDelta") is not None:
-        expanding_green = macd["hist"] > 0 and macd["histDelta"] > 0
-        expanding_red = macd["hist"] < 0 and macd["histDelta"] < 0
-        if expanding_green:
-            up += 2
-        if expanding_red:
-            down += 2
+    # 4. Heikin Ashi
+    if ha_candles and len(ha_candles) >= 2:
+        last_ha = ha_candles[-1]
+        prev_ha = ha_candles[-2]
 
-        if macd.get("macd") is not None:
-            if macd["macd"] > 0:
-                up += 1
-            if macd["macd"] < 0:
-                down += 1
+        # Up: Doji or first green after reds
+        # Check if previous was red
+        if not prev_ha["isGreen"]:
+            # Pattern 1: Exhaustion doji (body < 30% of avg body)
+            # Simple version: body < 0.3 * average body of last few candles
+            avg_body = sum(c["body"] for c in ha_candles[-5:]) / 5 if len(ha_candles) >= 5 else last_ha["body"]
+            is_doji = last_ha["body"] < 0.3 * avg_body
 
-    if heiken_color:
-        if heiken_color == "green" and heiken_count >= 2:
-            up += 1
-        if heiken_color == "red" and heiken_count >= 2:
-            down += 1
+            # Pattern 2: First green
+            is_first_green = last_ha["isGreen"]
 
-    # 5m Logic
-    if heiken_5m_color:
-        if heiken_5m_color == "green" and heiken_5m_count >= 2:
-            up += 1.5
-        if heiken_5m_color == "red" and heiken_5m_count >= 2:
-            down += 1.5
+            if is_doji or is_first_green:
+                # Avoid if strong downtrend (no lower wick)
+                # HA Low = Min(Low, HA Open, HA Close). No lower wick means HA Low == Min(HA Open, HA Close)
+                has_lower_wick = last_ha["low"] < min(last_ha["open"], last_ha["close"])
+                if has_lower_wick or is_first_green:
+                    up_score += 1
+                    reasons_up.append("HA Reversal/Doji")
 
-    if macd_5m is not None and macd_5m.get("hist") is not None and macd_5m.get("histDelta") is not None:
-        if macd_5m["histDelta"] > 0:
-            up += 1
-        if macd_5m["histDelta"] < 0:
-            down += 1
+        # Down: Doji or first red after greens
+        if prev_ha["isGreen"]:
+            avg_body = sum(c["body"] for c in ha_candles[-5:]) / 5 if len(ha_candles) >= 5 else last_ha["body"]
+            is_doji = last_ha["body"] < 0.3 * avg_body
+            is_first_red = not last_ha["isGreen"]
 
-    if failed_vwap_reclaim is True:
-        down += 3
-
-    raw_up = up / (up + down)
-    return {"upScore": up, "downScore": down, "rawUp": raw_up}
-
-def apply_time_awareness(raw_up: float, remaining_minutes: float, window_minutes: float) -> Dict[str, float]:
-    time_decay = clamp(remaining_minutes / window_minutes, 0, 1)
-    adjusted_up = clamp(0.5 + (raw_up - 0.5) * time_decay, 0, 1)
-    return {"timeDecay": time_decay, "adjustedUp": adjusted_up, "adjustedDown": 1 - adjusted_up}
-
-def compute_edge(inputs: Dict[str, Any]) -> Dict[str, Optional[float]]:
-    model_up = inputs.get("modelUp")
-    model_down = inputs.get("modelDown")
-    market_yes = inputs.get("marketYes")
-    market_no = inputs.get("marketNo")
-
-    if market_yes is None or market_no is None:
-        return {"marketUp": None, "marketDown": None, "edgeUp": None, "edgeDown": None}
-
-    total_market = market_yes + market_no
-    market_up = market_yes / total_market if total_market > 0 else None
-    market_down = market_no / total_market if total_market > 0 else None
-
-    edge_up = model_up - market_up if market_up is not None else None
-    edge_down = model_down - market_down if market_down is not None else None
+            if is_doji or is_first_red:
+                has_upper_wick = last_ha["high"] > max(last_ha["open"], last_ha["close"])
+                if has_upper_wick or is_first_red:
+                    down_score += 1
+                    reasons_down.append("HA Reversal/Doji")
 
     return {
-        "marketUp": clamp(market_up, 0, 1) if market_up is not None else None,
-        "marketDown": clamp(market_down, 0, 1) if market_down is not None else None,
-        "edgeUp": edge_up,
-        "edgeDown": edge_down
+        "UP": {"score": up_score, "reasons": reasons_up},
+        "DOWN": {"score": down_score, "reasons": reasons_down}
     }
 
+def check_reversal(side: str, inputs: Dict[str, Any]) -> bool:
+    """
+    Checks if position should be closed due to signal reversal.
+    Trigger: Indicators flip to OPPOSITE direction with score >= 3/4
+    """
+    scores = score_direction(inputs)
+    opposite_side = "DOWN" if side == "UP" else "UP"
+    return scores[opposite_side]["score"] >= 3
+
 def decide(inputs: Dict[str, Any]) -> Dict[str, Any]:
-    remaining_minutes = inputs.get("remainingMinutes")
-    edge_up = inputs.get("edgeUp")
-    edge_down = inputs.get("edgeDown")
-    model_up = inputs.get("modelUp")
-    model_down = inputs.get("modelDown")
+    """
+    Entry logic gates and scoring.
+    """
+    time_left_sec = inputs.get("time_left_sec", 0)
+    poly_price_up = inputs.get("poly_price_up") # e.g. 0.20
+    poly_price_down = inputs.get("poly_price_down")
+    btc_price = inputs.get("btc_price")
+    btc_open = inputs.get("btc_open")
+    active_position = inputs.get("active_position") # bool
 
-    phase = "EARLY" if remaining_minutes > 10 else "MID" if remaining_minutes > 5 else "LATE"
-    threshold = 0.05 if phase == "EARLY" else 0.1 if phase == "MID" else 0.2
-    min_prob = 0.55 if phase == "EARLY" else 0.6 if phase == "MID" else 0.65
+    # Gate 1: Time remaining >= 4 min
+    if time_left_sec < 240:
+        return {"action": "NO_TRADE", "reason": "time_left < 4m"}
 
-    if edge_up is None or edge_down is None:
-        return {"action": "NO_TRADE", "side": None, "phase": phase, "reason": "missing_market_data"}
+    # Gate 4: No active position
+    if active_position:
+        return {"action": "NO_TRADE", "reason": "active_position_exists"}
 
-    best_side = "UP" if edge_up > edge_down else "DOWN"
-    best_edge = edge_up if best_side == "UP" else edge_down
-    best_model = model_up if best_side == "UP" else model_down
+    scores = score_direction(inputs)
 
-    if best_edge < threshold:
-        return {"action": "NO_TRADE", "side": None, "phase": phase, "reason": f"edge_below_{threshold}"}
+    # Check "UP" entry
+    if poly_price_up is not None and poly_price_up <= 0.20:
+        if btc_price and btc_open and (btc_price - btc_open) / btc_open <= -0.0015:
+            if scores["UP"]["score"] >= 3:
+                return {
+                    "action": "ENTER",
+                    "side": "UP",
+                    "score": scores["UP"]["score"],
+                    "reasons": scores["UP"]["reasons"]
+                }
 
-    if best_model is not None and best_model < min_prob:
-        return {"action": "NO_TRADE", "side": None, "phase": phase, "reason": f"prob_below_{min_prob}"}
+    # Check "DOWN" entry
+    if poly_price_down is not None and poly_price_down <= 0.20:
+        if btc_price and btc_open and (btc_price - btc_open) / btc_open >= 0.0015:
+            if scores["DOWN"]["score"] >= 3:
+                return {
+                    "action": "ENTER",
+                    "side": "DOWN",
+                    "score": scores["DOWN"]["score"],
+                    "reasons": scores["DOWN"]["reasons"]
+                }
 
-    strength = "STRONG" if best_edge >= 0.2 else "GOOD" if best_edge >= 0.1 else "OPTIONAL"
-    return {"action": "ENTER", "side": best_side, "phase": phase, "strength": strength, "edge": best_edge}
+    return {"action": "NO_TRADE", "reason": "gates_or_score_not_met"}

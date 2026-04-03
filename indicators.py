@@ -84,20 +84,30 @@ def compute_macd(closes: List[float], fast: int, slow: int, signal: int) -> Opti
         if prev_signal is not None:
              prev_hist = macd_series[-2] - prev_signal
 
+    hist_series = []
+    for i in range(len(macd_series)):
+        sub_macd = macd_series[:i+1]
+        sig = ema(sub_macd, signal)
+        if sig is not None:
+            hist_series.append(macd_series[i] - sig)
+
     return {
         "macd": macd_line,
         "signal": signal_line,
         "hist": hist,
-        "histDelta": last_hist - prev_hist if prev_hist is not None else None
+        "histDelta": last_hist - prev_hist if prev_hist is not None else None,
+        "hist_series": hist_series
     }
 
-def compute_session_vwap(candles: List[Dict]) -> Optional[float]:
+def compute_session_vwap(candles: List[Dict], start_time_ms: Optional[int] = None) -> Optional[float]:
     if not isinstance(candles, list) or len(candles) == 0:
         return None
 
     pv = 0.0
     v = 0.0
     for c in candles:
+        if start_time_ms is not None and c["openTime"] < start_time_ms:
+            continue
         tp = (c["high"] + c["low"] + c["close"]) / 3
         pv += tp * c["volume"]
         v += c["volume"]

@@ -109,6 +109,12 @@ class PolymarketChainlinkStream:
     def __init__(self, ws_url: str, symbol_includes: str = "btc", on_update: Optional[Callable] = None):
         self.ws_url = ws_url
         self.symbol_includes = symbol_includes.lower()
+        if "btc" in self.symbol_includes:
+            self.filter_symbol = "btc/usd"
+        elif "eth" in self.symbol_includes:
+            self.filter_symbol = "eth/usd"
+        else:
+            self.filter_symbol = f"{self.symbol_includes}/usd"
         self.on_update = on_update
         self.last_price = None
         self.last_updated_at = None
@@ -125,15 +131,36 @@ class PolymarketChainlinkStream:
                 }
                 async with aiohttp.ClientSession(headers=headers) as session:
                     async with session.ws_connect(self.ws_url, proxy=proxy if proxy else None) as ws:
-                        print(f"Connected to Polymarket WS. Filter: {self.symbol_includes}")
+                        print(f"Connected to Polymarket WS. Filter: {self.filter_symbol}")
                         subscribe_msg = {
                             "action": "subscribe",
-                            "subscriptions": [{"topic": "crypto_prices_chainlink", "type": "*", "filters": ""}]
+                            "subscriptions": [
+                                {
+                                    "topic": "crypto_prices_chainlink",
+                                    "type": "*",
+                                    "filters": json.dumps({"symbol": self.filter_symbol})
+                                }
+                            ]
                         }
                         await ws.send_json(subscribe_msg)
+
+                        # Ping task
+                        async def send_ping():
+                            while not self.closed and not ws.closed:
+                                try:
+                                    await ws.send_str("PING")
+                                    await asyncio.sleep(5)
+                                except:
+                                    break
+
+                        ping_task = asyncio.create_task(send_ping())
+
                         while not self.closed:
                             msg = await ws.receive()
                             if msg.type == aiohttp.WSMsgType.TEXT:
+                                if msg.data == "PONG":
+                                    continue
+
                                 data = json.loads(msg.data)
                                 if data.get("topic") != "crypto_prices_chainlink":
                                     continue
@@ -145,18 +172,14 @@ class PolymarketChainlinkStream:
                                     except:
                                         continue
 
-                                symbol = str(payload.get("symbol") or payload.get("pair") or payload.get("ticker") or "").lower()
-                                if self.symbol_includes and self.symbol_includes not in symbol:
-                                    continue
-
+                                # The new feed has payload: { "symbol": "btc/usd", "timestamp": ..., "value": ... }
                                 try:
-                                    price_val = payload.get("value") or payload.get("price") or payload.get("current") or payload.get("data")
+                                    price_val = payload.get("value")
                                     if price_val is None: continue
                                     price = float(price_val)
 
-                                    ts_val = payload.get("timestamp") or payload.get("updatedAt")
+                                    ts_val = payload.get("timestamp")
                                     updated_at = float(ts_val) if ts_val else time.time()
-                                    # Ensure ms
                                     if updated_at < 10000000000: updated_at *= 1000
 
                                     self.last_price = price
@@ -168,6 +191,8 @@ class PolymarketChainlinkStream:
                                     continue
                             elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
                                 break
+
+                        ping_task.cancel()
             except Exception as e:
                 print(f"WS Error (Polymarket): {e}")
                 if not self.closed:

@@ -44,10 +44,14 @@
         </header>
 
         <!-- Market Summary -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
             <div class="bg-gray-800 p-4 sm:p-6 rounded-lg shadow-lg border-l-4 border-blue-500">
                 <p class="text-gray-400 text-xs sm:text-sm uppercase">BTC Binance Spot</p>
                 <h2 class="text-2xl sm:text-3xl font-mono" x-text="'$' + (data.prices?.spot?.toLocaleString() || '-')"></h2>
+            </div>
+            <div class="bg-gray-800 p-4 sm:p-6 rounded-lg shadow-lg border-l-4 border-yellow-500">
+                <p class="text-gray-400 text-xs sm:text-sm uppercase">BTC Window Open</p>
+                <h2 class="text-2xl sm:text-3xl font-mono" x-text="'$' + (data.trading_state?.btc_open?.toLocaleString() || '-')"></h2>
             </div>
             <div class="bg-gray-800 p-4 sm:p-6 rounded-lg shadow-lg border-l-4 border-green-500 group relative">
                 <div class="flex justify-between items-start">
@@ -73,21 +77,18 @@
 
         <!-- Prediction -->
         <div class="bg-gray-800 p-6 sm:p-8 rounded-lg shadow-lg mb-6 sm:mb-8 text-center border-t-2 border-blue-600 overflow-hidden">
-            <p class="text-gray-400 uppercase tracking-widest mb-4 text-xs sm:text-sm">Current Prediction</p>
+            <p class="text-gray-400 uppercase tracking-widest mb-4 text-xs sm:text-sm">Current Signal</p>
             <div class="flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-12">
-                <div class="text-center order-2 sm:order-1">
-                    <p class="text-green-400 text-2xl sm:text-4xl font-bold" x-text="(data.analysis?.probability?.adjustedUp * 100).toFixed(1) + '%'"></p>
-                    <p class="text-[10px] sm:text-xs text-gray-500">PROB UP</p>
-                </div>
-                <div class="text-center order-1 sm:order-2">
+                <div class="text-center">
                     <div class="text-3xl sm:text-5xl font-black mb-1 sm:mb-2" :class="data.analysis?.decision?.action === 'ENTER' ? (data.analysis?.decision?.side === 'UP' ? 'text-green-500' : 'text-red-500') : 'text-gray-600'">
                         <span x-text="data.analysis?.decision?.action === 'ENTER' ? (data.analysis?.decision?.side === 'UP' ? 'BUY UP ↑' : 'BUY DOWN ↓') : 'NO TRADE'"></span>
                     </div>
-                    <p class="text-[10px] sm:text-xs uppercase text-gray-400 font-bold" x-text="data.analysis?.decision?.reason || ''"></p>
-                </div>
-                <div class="text-center order-3">
-                    <p class="text-red-400 text-2xl sm:text-4xl font-bold" x-text="(data.analysis?.probability?.adjustedDown * 100).toFixed(1) + '%'"></p>
-                    <p class="text-[10px] sm:text-xs text-gray-500">PROB DOWN</p>
+                    <div class="flex flex-wrap justify-center gap-2 mt-2">
+                        <template x-for="reason in (data.analysis?.decision?.reasons || [])">
+                            <span class="bg-gray-700 px-2 py-1 rounded text-[10px] uppercase font-bold text-blue-300" x-text="reason"></span>
+                        </template>
+                    </div>
+                    <p class="text-[10px] sm:text-xs uppercase text-gray-500 font-bold mt-2" x-text="data.analysis?.decision?.reason || ''"></p>
                 </div>
             </div>
         </div>
@@ -98,28 +99,21 @@
                 <h3 class="text-lg sm:text-xl font-bold mb-4 border-b border-gray-700 pb-2">Technical Indicators</h3>
                 <div class="space-y-4">
                     <div class="flex justify-between text-sm sm:text-base">
-                        <span class="text-gray-400">RSI (14)</span>
-                        <span :class="data.indicators?.rsi > 70 ? 'text-red-400' : (data.indicators?.rsi < 30 ? 'text-green-400' : 'text-white')" x-text="data.indicators?.rsi?.toFixed(2) || '-'"></span>
+                        <span class="text-gray-400">RSI (7)</span>
+                        <span :class="data.indicators?.rsi > 72 ? 'text-red-400' : (data.indicators?.rsi < 28 ? 'text-green-400' : 'text-white')" x-text="data.indicators?.rsi?.toFixed(2) || '-'"></span>
                     </div>
                     <div class="flex justify-between text-sm sm:text-base">
-                        <span class="text-gray-400">VWAP</span>
-                        <span x-text="'$' + (data.indicators?.vwap?.toFixed(0) || '-')"></span>
+                        <span class="text-gray-400">VWAP (15m Reset)</span>
+                        <span x-text="'$' + (data.indicators?.vwap?.toLocaleString() || '-')"></span>
                     </div>
                     <div class="flex justify-between text-sm sm:text-base">
                         <span class="text-gray-400">Heiken Ashi (1m)</span>
-                        <span :class="data.indicators?.heiken?.color === 'green' ? 'text-green-400' : 'text-red-400'" x-text="(data.indicators?.heiken?.color || '-') + ' x' + (data.indicators?.heiken?.count || 0)"></span>
+                        <span :class="data.indicators?.ha_last?.isGreen ? 'text-green-400' : 'text-red-400'" x-text="data.indicators?.ha_last ? (data.indicators.ha_last.isGreen ? 'Green' : 'Red') : '-'"></span>
                     </div>
                     <div class="flex justify-between text-sm sm:text-base">
-                        <span class="text-gray-400">Heiken Ashi (5m)</span>
-                        <span :class="data.indicators?.heiken_5m?.color === 'green' ? 'text-green-400' : 'text-red-400'" x-text="(data.indicators?.heiken_5m?.color || '-') + ' x' + (data.indicators?.heiken_5m?.count || 0)"></span>
-                    </div>
-                    <div class="flex justify-between text-sm sm:text-base">
-                        <span class="text-gray-400">MACD (5m)</span>
-                        <span :class="data.indicators?.macd_5m?.histDelta > 0 ? 'text-green-400' : 'text-red-400'" x-text="data.indicators?.macd_5m?.histDelta > 0 ? 'Rising ↑' : 'Falling ↓'"></span>
-                    </div>
-                    <div class="flex justify-between text-sm sm:text-base">
-                        <span class="text-gray-400">Market Regime</span>
-                        <span class="font-bold text-blue-400" x-text="data.analysis?.regime?.regime || '-'"></span>
+                        <span class="text-gray-400">BTC % from Open</span>
+                        <span :class="((data.prices?.spot - data.trading_state?.btc_open) / data.trading_state?.btc_open) > 0 ? 'text-green-400' : 'text-red-400'"
+                              x-text="data.trading_state?.btc_open ? (((data.prices?.spot - data.trading_state?.btc_open) / data.trading_state?.btc_open) * 100).toFixed(3) + '%' : '-'"></span>
                     </div>
                 </div>
             </div>
@@ -136,8 +130,8 @@
                         <span class="text-xl sm:text-2xl font-mono text-red-400" x-text="data.prices?.poly_down ? (data.prices.poly_down * 100).toFixed(0) + '¢' : '-'"></span>
                     </div>
                     <div class="flex justify-between border-t border-gray-700 pt-2 text-sm sm:text-base">
-                        <span class="text-gray-400">Model Edge (UP)</span>
-                        <span :class="data.analysis?.edge?.edgeUp > 0 ? 'text-green-400' : 'text-red-400'" x-text="(data.analysis?.edge?.edgeUp * 100).toFixed(1) + '%'"></span>
+                        <span class="text-gray-400">Score</span>
+                        <span class="font-bold text-blue-400" x-text="data.analysis?.decision?.score ? data.analysis.decision.score + '/4' : '0/4'"></span>
                     </div>
                 </div>
             </div>
@@ -176,7 +170,10 @@
                                         <td class="px-4 py-3 font-bold" :class="trade.side === 'UP' ? 'text-green-400' : 'text-red-400'" x-text="trade.side"></td>
                                         <td class="px-4 py-3 font-mono" x-text="(trade.entry_price * 100).toFixed(0) + '¢'"></td>
                                         <td class="px-4 py-3 font-mono" x-text="trade.shares.toFixed(2)"></td>
-                                        <td class="px-4 py-3 text-right text-yellow-500 font-bold" x-text="trade.status"></td>
+                                        <td class="px-4 py-3 text-right">
+                                            <div class="text-yellow-500 font-bold" x-text="trade.status"></div>
+                                            <div class="text-[10px] text-gray-500" x-text="(currentPrices[trade.side === 'UP' ? 'poly_up' : 'poly_down'] * 100).toFixed(0) + '¢'"></div>
+                                        </td>
                                     </tr>
                                 </template>
                                 <tr x-show="!data.trading_state?.active_trades?.length">
@@ -207,7 +204,10 @@
                                         <td class="px-4 py-3 truncate max-w-[150px] sm:max-w-[200px]" x-text="trade.market_slug"></td>
                                         <td class="px-4 py-3 font-bold" :class="trade.side === 'UP' ? 'text-green-400' : 'text-red-400'" x-text="trade.side"></td>
                                         <td class="px-4 py-3 font-mono" x-text="(trade.entry_price * 100).toFixed(0) + '¢'"></td>
-                                        <td class="px-4 py-3 font-bold font-mono" :class="trade.profit_loss > 0 ? 'text-green-400' : 'text-red-400'" x-text="(trade.profit_loss > 0 ? '+$' : '-$') + Math.abs(trade.profit_loss).toFixed(2)"></td>
+                                        <td class="px-4 py-3">
+                                            <div class="font-bold font-mono" :class="trade.profit_loss > 0 ? 'text-green-400' : 'text-red-400'" x-text="(trade.profit_loss > 0 ? '+$' : '-$') + Math.abs(trade.profit_loss).toFixed(2)"></div>
+                                            <div class="text-[10px] text-gray-500" x-text="trade.exit_reason"></div>
+                                        </td>
                                         <td class="px-4 py-3 text-right text-gray-500" x-text="new Date(trade.exit_time).toLocaleTimeString()"></td>
                                     </tr>
                                 </template>
@@ -242,6 +242,7 @@
         function assistantData() {
             return {
                 data: {},
+                currentPrices: {},
                 lastUpdate: '-',
                 tab: 'active',
                 logs: [],
@@ -255,6 +256,7 @@
                     try {
                         const response = await fetch('/api/latest');
                         this.data = await response.json();
+                        this.currentPrices = this.data.prices || {};
                         this.lastUpdate = new Date().toLocaleTimeString();
 
                         if (this.tab === 'history') {

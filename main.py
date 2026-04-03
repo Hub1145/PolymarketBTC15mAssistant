@@ -27,7 +27,9 @@ state = {
     "paper_balance": settings.PAPER_BALANCE_USD,
     "active_trades": [],
     "trade_history": [],
-    "logs": []
+    "logs": [],
+    "btc_window_open": None,
+    "current_window_start": 0
 }
 
 def log_message(msg: str):
@@ -153,6 +155,7 @@ async def execute_trade(decision: Dict[str, Any], market_prices: Dict[str, Any],
         return
 
     side = decision["side"]
+    # For Mean Reversion, we always buy the side priced <= 20c
     price = market_prices["up"] if side == "UP" else market_prices["down"]
     if price is None:
         return
@@ -160,11 +163,14 @@ async def execute_trade(decision: Dict[str, Any], market_prices: Dict[str, Any],
     if any(t["market_id"] == market["id"] for t in state["active_trades"]):
         return
 
-    # Risk management
-    if settings.RISK_TYPE == "percent":
-        amount_to_risk = (settings.RISK_VALUE / 100.0) * state["paper_balance"]
-    else:
-        amount_to_risk = settings.RISK_VALUE
+    # Risk management - Conviction-based scaling
+    # 4/4 signals -> 10% of bankroll, 3/4 signals -> 5% of bankroll
+    base_percent = 5.0 if decision["score"] == 3 else 10.0
+
+    # Drawdown scaling (simple version)
+    # TODO: Implement full drawdown scaling if needed
+
+    amount_to_risk = (base_percent / 100.0) * state["paper_balance"]
 
     if state["paper_balance"] < amount_to_risk or amount_to_risk <= 0:
         print(f"Insufficient paper balance ({state['paper_balance']}) or invalid risk amount ({amount_to_risk})")
@@ -174,90 +180,116 @@ async def execute_trade(decision: Dict[str, Any], market_prices: Dict[str, Any],
         "market_id": market["id"],
         "market_slug": market.get("slug"),
         "side": side,
-        "entry_price": price,
+        "entry_price": 0.20, # Strategy specifies buying at 20c
         "amount": amount_to_risk,
         "shares": amount_to_risk / price,
         "entry_time": datetime.now().isoformat(),
         "status": "OPEN",
         "settlement_price": None,
-        "profit_loss": None
+        "profit_loss": None,
+        "reasons": decision["reasons"]
     }
 
     if state["trading_mode"] == "paper":
         state["paper_balance"] -= amount_to_risk
         state["active_trades"].append(trade)
-        log_message(f"Executed PAPER trade: {side} @ {price} for {market.get('slug')} (Amount: ${amount_to_risk:.2f})")
+        log_message(f"Executed PAPER trade: {side} @ {price*100:.0f}c (Score: {decision['score']}/4)")
     else:
-        log_message(f"LIVE mode enabled but execution not implemented. Mode: {state['trading_mode']}")
+        log_message(f"LIVE mode enabled but execution not implemented.")
 
-async def update_trades(current_prices: Dict[str, Any]):
+async def update_trades(current_prices: Dict[str, Any], indicators_data: Dict[str, Any], time_left_sec: float):
     remaining_active = []
     for trade in state["active_trades"]:
-        market = await data.fetch_market_by_slug(trade["market_slug"])
-        if not market:
-            remaining_active.append(trade)
-            continue
+        # 1. Check TP/SL
+        side_price = current_prices["up"] if trade["side"] == "UP" else current_prices["down"]
 
-        is_closed = market.get("closed", False)
-        if is_closed:
-            # Determine outcome
-            # The original JS logic uses 'outcomePrices' to check which side won
-            # If the market is resolved, one price will be 1.0 (or 100) and the other 0.0
+        if side_price is not None:
+            # Take Profit >= 80c
+            if side_price >= settings.TP_VALUE:
+                await close_trade(trade, side_price, "TAKE_PROFIT")
+                continue
+
+            # Stop Loss <= 10c
+            if side_price <= settings.SL_VALUE:
+                await close_trade(trade, side_price, "STOP_LOSS")
+                continue
+
+        # 2. Signal Reversal (if price < 65c)
+        if side_price is not None and side_price < 0.65:
+            if engines.check_reversal(trade["side"], indicators_data):
+                await close_trade(trade, side_price, "SIGNAL_REVERSAL")
+                continue
+
+        # 3. Time Exit
+        if time_left_sec < 120:
+            # Hard rule < 60s
+            if time_left_sec < 60:
+                await close_trade(trade, side_price or 0, "TIME_EXIT_HARD")
+                continue
+
+            # Path B: Signals neutral/reversed or already profitable (>= 30c)
+            # Path A: Hold if signals still valid AND price < entry (in loss)
+            # For simplicity, if not (signals valid AND in loss), close.
+            is_profitable = side_price is not None and side_price >= 0.30
+            signals_valid = not engines.check_reversal(trade["side"], indicators_data) # This is a bit loose but works
+
+            if is_profitable or not signals_valid:
+                await close_trade(trade, side_price or 0, "TIME_EXIT_SOFT")
+                continue
+
+        # 4. Check if market actually closed (fallback)
+        market = await data.fetch_market_by_slug(trade["market_slug"])
+        if market and market.get("closed", False):
             outcomes = market.get("outcomes", [])
             if isinstance(outcomes, str): outcomes = json.loads(outcomes)
             outcome_prices = market.get("outcomePrices", [])
             if isinstance(outcome_prices, str): outcome_prices = json.loads(outcome_prices)
 
             won = False
-            payout = 0.0
-
             up_index = next((i for i, x in enumerate(outcomes) if x.lower() == settings.POLYMARKET_UP_LABEL.lower()), -1)
             down_index = next((i for i, x in enumerate(outcomes) if x.lower() == settings.POLYMARKET_DOWN_LABEL.lower()), -1)
 
             winning_index = -1
             if outcome_prices:
                 try:
-                    # Find which index has price near 1.0
                     for i, p in enumerate(outcome_prices):
                         if float(p) > 0.9:
                             winning_index = i
                             break
-                except:
-                    pass
+                except: pass
 
             if winning_index != -1:
-                if trade["side"] == "UP" and winning_index == up_index:
-                    won = True
-                elif trade["side"] == "DOWN" and winning_index == down_index:
+                if (trade["side"] == "UP" and winning_index == up_index) or (trade["side"] == "DOWN" and winning_index == down_index):
                     won = True
 
-                if won:
-                    payout = trade["shares"] * 1.0 # Each share settles to $1
-                    state["paper_balance"] += payout
-                    settings.PAPER_BALANCE_USD = state["paper_balance"]
-                    trade["profit_loss"] = payout - trade["amount"]
-                    log_message(f"WIN: Trade for {trade['market_slug']} settled. Profit: ${trade['profit_loss']:.2f}")
-                else:
-                    trade["profit_loss"] = -trade["amount"]
-                    log_message(f"LOSS: Trade for {trade['market_slug']} settled. Loss: ${trade['profit_loss']:.2f}")
+                await close_trade(trade, 1.0 if won else 0.0, "RESOLUTION")
+                continue
 
-                # Persist balance to config.json
-                try:
-                    with open("config.json", "r") as f:
-                        cfg = json.load(f)
-                    cfg["paper_balance_usd"] = state["paper_balance"]
-                    with open("config.json", "w") as f:
-                        json.dump(cfg, f, indent=2)
-                except:
-                    pass
-
-            trade["status"] = "CLOSED"
-            trade["exit_time"] = datetime.now().isoformat()
-            state["trade_history"].append(trade)
-        else:
-            remaining_active.append(trade)
+        remaining_active.append(trade)
 
     state["active_trades"] = remaining_active
+
+async def close_trade(trade: Dict[str, Any], exit_price: float, reason: str):
+    payout = trade["shares"] * exit_price
+    state["paper_balance"] += payout
+    settings.PAPER_BALANCE_USD = state["paper_balance"]
+    trade["profit_loss"] = payout - trade["amount"]
+    trade["status"] = "CLOSED"
+    trade["exit_price"] = exit_price
+    trade["exit_time"] = datetime.now().isoformat()
+    trade["exit_reason"] = reason
+    state["trade_history"].append(trade)
+
+    log_message(f"CLOSED {trade['side']} @ {exit_price*100:.0f}c | Reason: {reason} | P/L: ${trade['profit_loss']:.2f}")
+
+    # Persist balance
+    try:
+        with open("config.json", "r") as f:
+            cfg = json.load(f)
+        cfg["paper_balance_usd"] = state["paper_balance"]
+        with open("config.json", "w") as f:
+            json.dump(cfg, f, indent=2)
+    except: pass
 
 async def seed_kline_buffers():
     try:
@@ -322,89 +354,51 @@ async def update_loop():
 
             time_left_min = (settlement_ms - time.time() * 1000) / 60_000 if settlement_ms else timing["remainingMinutes"]
 
-            closes = [c["close"] for c in klines_1m]
-            vwap_now = indicators.compute_session_vwap(klines_1m)
-            vwap_series = indicators.compute_vwap_series(klines_1m)
+            if timing["startMs"] != state["current_window_start"]:
+                state["current_window_start"] = timing["startMs"]
+                state["btc_window_open"] = spot_price
+                log_message(f"New window started. BTC Open: {state['btc_window_open']}")
 
-            lookback = settings.VWAP_SLOPE_LOOKBACK_MINUTES
-            vwap_slope = (vwap_now - vwap_series[-lookback]) / lookback if vwap_now and len(vwap_series) >= lookback and vwap_series[-lookback] else None
+            closes = [c["close"] for c in klines_1m]
+            vwap_now = indicators.compute_session_vwap(klines_1m, start_time_ms=timing["startMs"])
 
             rsi_now = indicators.compute_rsi(closes, settings.RSI_PERIOD)
-
-            rsi_series_limited = []
-            for i in range(len(closes) - 5, len(closes)):
-                r = indicators.compute_rsi(closes[:i+1], settings.RSI_PERIOD)
-                if r is not None: rsi_series_limited.append(r)
-            rsi_slope = indicators.slope_last(rsi_series_limited, 3)
-
             macd = indicators.compute_macd(closes, settings.MACD_FAST, settings.MACD_SLOW, settings.MACD_SIGNAL)
-
             ha = indicators.compute_heiken_ashi(klines_1m)
-            consec = indicators.count_consecutive(ha)
-
-            # 5m indicators
-            closes_5m = [c["close"] for c in klines_5m]
-            macd_5m = indicators.compute_macd(closes_5m, settings.MACD_FAST, settings.MACD_SLOW, settings.MACD_SIGNAL)
-            ha_5m = indicators.compute_heiken_ashi(klines_5m)
-            consec_5m = indicators.count_consecutive(ha_5m)
-
-            failed_vwap_reclaim = False
-            if vwap_now and len(vwap_series) >= 2:
-                failed_vwap_reclaim = closes[-1] < vwap_now and closes[-2] > vwap_series[-2]
-
-            regime_info = engines.detect_regime({
-                "price": spot_price,
-                "vwap": vwap_now,
-                "vwapSlope": vwap_slope,
-                "volumeRecent": sum(c["volume"] for c in klines_1m[-20:]),
-                "volumeAvg": sum(c["volume"] for c in klines_1m[-120:]) / 6
-            })
-
-            scored = engines.score_direction({
-                "price": spot_price,
-                "vwap": vwap_now,
-                "vwapSlope": vwap_slope,
-                "rsi": rsi_now,
-                "rsiSlope": rsi_slope,
-                "macd": macd,
-                "heikenColor": consec["color"],
-                "heikenCount": consec["count"],
-                "failedVwapReclaim": failed_vwap_reclaim,
-                "macd_5m": macd_5m,
-                "heiken_5m_color": consec_5m["color"],
-                "heiken_5m_count": consec_5m["count"]
-            })
-
-            time_aware = engines.apply_time_awareness(scored["rawUp"], time_left_min, settings.CANDLE_WINDOW_MINUTES)
 
             market_up = poly_snapshot["prices"]["up"] if poly_snapshot["ok"] else None
             market_down = poly_snapshot["prices"]["down"] if poly_snapshot["ok"] else None
 
-            edge = engines.compute_edge({
-                "modelUp": time_aware["adjustedUp"],
-                "modelDown": time_aware["adjustedDown"],
-                "marketYes": market_up,
-                "marketNo": market_down
-            })
+            indicators_data = {
+                "price": spot_price,
+                "vwap": vwap_now,
+                "rsi": rsi_now,
+                "macd": macd,
+                "ha_candles": ha
+            }
 
             decision = engines.decide({
-                "remainingMinutes": time_left_min,
-                "edgeUp": edge["edgeUp"],
-                "edgeDown": edge["edgeDown"],
-                "modelUp": time_aware["adjustedUp"],
-                "modelDown": time_aware["adjustedDown"]
+                **indicators_data,
+                "time_left_sec": time_left_min * 60,
+                "poly_price_up": market_up,
+                "poly_price_down": market_down,
+                "btc_price": spot_price,
+                "btc_open": state["btc_window_open"],
+                "active_position": len(state["active_trades"]) > 0
             })
 
             if poly_snapshot["ok"]:
                 await execute_trade(decision, poly_snapshot["prices"], poly_snapshot["market"])
 
-            await update_trades(poly_snapshot["prices"] if poly_snapshot["ok"] else {})
+            await update_trades(poly_snapshot["prices"] if poly_snapshot["ok"] else {}, indicators_data, time_left_min * 60)
 
-            signal_label = f"BUY {decision['side']}" if decision["action"] == "ENTER" else "NO TRADE"
-            utils.append_csv_row("./logs/signals.csv", csv_header, [
-                datetime.now().isoformat(), timing["elapsedMinutes"], time_left_min, regime_info["regime"],
-                signal_label, time_aware["adjustedUp"], time_aware["adjustedDown"], market_up, market_down,
-                edge["edgeUp"], edge["edgeDown"], f"{decision['side']}:{decision['phase']}:{decision['strength']}" if decision["action"] == "ENTER" else "NO_TRADE"
+            signal_label = f"BUY {decision.get('side')}" if decision["action"] == "ENTER" else "NO TRADE"
+            # Update CSV logging to match new strategy data
+            csv_header_new = ["timestamp", "time_left_min", "signal", "score", "reasons", "poly_up", "poly_down", "btc_price", "btc_open"]
+            utils.append_csv_row("./logs/signals.csv", csv_header_new, [
+                datetime.now().isoformat(), time_left_min, signal_label,
+                decision.get("score", 0), "|".join(decision.get("reasons", [])),
+                market_up, market_down, spot_price, state["btc_window_open"]
             ])
 
             state["latest_data"] = {
@@ -417,7 +411,11 @@ async def update_loop():
                     "active_trades": state["active_trades"],
                     "history_count": len(state["trade_history"]),
                     "risk": {"type": settings.RISK_TYPE, "value": settings.RISK_VALUE},
-                    "symbol": settings.SYMBOL
+                    "symbol": settings.SYMBOL,
+                    "btc_open": state["btc_window_open"],
+                    "use_tp_sl": settings.USE_TP_SL,
+                    "tp_value": settings.TP_VALUE,
+                    "sl_value": settings.SL_VALUE
                 },
                 "prices": {
                     "spot": spot_price,
@@ -430,12 +428,10 @@ async def update_loop():
                     "rsi": rsi_now,
                     "vwap": vwap_now,
                     "macd": macd,
-                    "heiken": consec,
-                    "macd_5m": macd_5m,
-                    "heiken_5m": consec_5m
+                    "ha_last": ha[-1] if ha else None
                 },
                 "analysis": {
-                    "regime": regime_info, "probability": time_aware, "edge": edge, "decision": decision
+                    "decision": decision
                 }
             }
             state["last_update_ts"] = time.time()
@@ -499,7 +495,10 @@ async def get_settings():
         "trading": {
             "symbol": settings.SYMBOL,
             "risk_type": settings.RISK_TYPE,
-            "risk_value": settings.RISK_VALUE
+            "risk_value": settings.RISK_VALUE,
+            "use_tp_sl": settings.USE_TP_SL,
+            "tp_value": settings.TP_VALUE,
+            "sl_value": settings.SL_VALUE
         }
     }
 
@@ -526,6 +525,9 @@ async def post_settings(new_settings: Dict[str, Any]):
         settings.SYMBOL = t.get("symbol", settings.SYMBOL)
         settings.RISK_TYPE = t.get("risk_type", settings.RISK_TYPE)
         settings.RISK_VALUE = float(t.get("risk_value", settings.RISK_VALUE))
+        settings.USE_TP_SL = t.get("use_tp_sl", settings.USE_TP_SL)
+        settings.TP_VALUE = float(t.get("tp_value", settings.TP_VALUE))
+        settings.SL_VALUE = float(t.get("sl_value", settings.SL_VALUE))
 
     if "polymarket" in new_settings:
         p = new_settings["polymarket"]
