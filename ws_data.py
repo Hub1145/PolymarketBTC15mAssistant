@@ -150,10 +150,13 @@ class PolymarketChainlinkStream:
                         while not self.closed:
                             msg = await ws.receive()
                             if msg.type == aiohttp.WSMsgType.TEXT:
-                                if msg.data == "PONG":
+                                if not msg.data or msg.data == "PONG":
                                     continue
 
-                                data = json.loads(msg.data)
+                                try:
+                                    data = json.loads(msg.data)
+                                except:
+                                    continue
                                 if data.get("topic") != "crypto_prices_chainlink":
                                     continue
 
