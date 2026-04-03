@@ -138,7 +138,7 @@ class PolymarketChainlinkStream:
                                 {
                                     "topic": "crypto_prices_chainlink",
                                     "type": "*",
-                                    "filters": json.dumps({"symbol": self.filter_symbol})
+                                    "filters": ""
                                 }
                             ]
                         }
@@ -161,7 +161,11 @@ class PolymarketChainlinkStream:
                                 if msg.data == "PONG":
                                     continue
 
-                                data = json.loads(msg.data)
+                                try:
+                                    data = json.loads(msg.data)
+                                except:
+                                    continue
+
                                 if data.get("topic") != "crypto_prices_chainlink":
                                     continue
 
@@ -172,7 +176,11 @@ class PolymarketChainlinkStream:
                                     except:
                                         continue
 
-                                # The new feed has payload: { "symbol": "btc/usd", "timestamp": ..., "value": ... }
+                                # Filter by symbol in code as RTDS filters can be flaky
+                                msg_symbol = str(payload.get("symbol") or "").lower()
+                                if self.filter_symbol not in msg_symbol:
+                                    continue
+
                                 try:
                                     price_val = payload.get("value")
                                     if price_val is None: continue
