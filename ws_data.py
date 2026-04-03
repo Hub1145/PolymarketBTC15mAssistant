@@ -117,6 +117,15 @@ class PolymarketChainlinkStream:
     async def start(self):
         if not self.ws_url:
             return
+
+        async def ping_loop(ws):
+            while not self.closed:
+                try:
+                    await ws.send_str("PING")
+                    await asyncio.sleep(5)
+                except:
+                    break
+
         while not self.closed:
             try:
                 proxy = get_proxy_url_for(self.ws_url)
@@ -126,14 +135,24 @@ class PolymarketChainlinkStream:
                 async with aiohttp.ClientSession(headers=headers) as session:
                     async with session.ws_connect(self.ws_url, proxy=proxy if proxy else None) as ws:
                         print(f"Connected to Polymarket WS. Filter: {self.symbol_includes}")
+
+                        # Correct filter format: {"symbol":"btc/usd"}
+                        filters = f'{{"symbol":"{self.symbol_includes}/usd"}}'
                         subscribe_msg = {
                             "action": "subscribe",
-                            "subscriptions": [{"topic": "crypto_prices_chainlink", "type": "*", "filters": ""}]
+                            "subscriptions": [{"topic": "crypto_prices_chainlink", "type": "*", "filters": filters}]
                         }
                         await ws.send_json(subscribe_msg)
+
+                        # Start ping loop
+                        asyncio.create_task(ping_loop(ws))
+
                         while not self.closed:
                             msg = await ws.receive()
                             if msg.type == aiohttp.WSMsgType.TEXT:
+                                if msg.data == "PONG":
+                                    continue
+
                                 data = json.loads(msg.data)
                                 if data.get("topic") != "crypto_prices_chainlink":
                                     continue

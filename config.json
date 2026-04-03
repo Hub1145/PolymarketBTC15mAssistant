@@ -5,7 +5,7 @@
   "polymarket": {
     "gamma_base_url": "https://gamma-api.polymarket.com",
     "clob_base_url": "https://clob.polymarket.com",
-    "live_ws_url": "wss://ws-live-data.polymarket.com",
+    "live_ws_url": "wss://data-feed.polymarket.com",
     "series_id": "10192",
     "series_slug": "btc-up-or-down-15m",
     "auto_select_latest": true,
