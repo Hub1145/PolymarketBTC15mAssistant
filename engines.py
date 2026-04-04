@@ -50,6 +50,12 @@ def score_direction(inputs: Dict[str, Any]) -> Dict[str, float]:
     up = 1.0
     down = 1.0
 
+    # 1. RSI Overbought/Oversold Protections
+    # If overbought (>70), avoid new buys (reset up score if it was high)
+    # If oversold (<30), avoid new sells (reset down score if it was high)
+    is_overbought = rsi is not None and rsi > 70
+    is_oversold = rsi is not None and rsi < 30
+
     if price is not None and vwap is not None:
         if price > vwap:
             up += 2
@@ -63,48 +69,62 @@ def score_direction(inputs: Dict[str, Any]) -> Dict[str, float]:
             down += 2
 
     if rsi is not None and rsi_slope is not None:
-        if rsi > 55 and rsi_slope > 0:
+        if not is_overbought and rsi > 55 and rsi_slope > 0:
             up += 2
-        if rsi < 45 and rsi_slope < 0:
+        if not is_oversold and rsi < 45 and rsi_slope < 0:
             down += 2
 
+    # 2. MACD (1m)
     if macd is not None and macd.get("hist") is not None and macd.get("histDelta") is not None:
-        expanding_green = macd["hist"] > 0 and macd["histDelta"] > 0
-        expanding_red = macd["hist"] < 0 and macd["histDelta"] < 0
-        if expanding_green:
+        if macd["hist"] > 0 and macd["histDelta"] > 0:
             up += 2
-        if expanding_red:
+        if macd["hist"] < 0 and macd["histDelta"] < 0:
             down += 2
 
-        if macd.get("macd") is not None:
-            if macd["macd"] > 0:
-                up += 1
-            if macd["macd"] < 0:
-                down += 1
-
+    # 3. Heiken Ashi (1m)
     if heiken_color:
         if heiken_color == "green" and heiken_count >= 2:
             up += 1
         if heiken_color == "red" and heiken_count >= 2:
             down += 1
 
-    # 5m Logic
-    if heiken_5m_color:
-        if heiken_5m_color == "green" and heiken_5m_count >= 2:
-            up += 1.5
-        if heiken_5m_color == "red" and heiken_5m_count >= 2:
-            down += 1.5
-
+    # 4. 5m MACD (Extremely Important - provides 5m & 15m context)
+    # 5m MACD histogram delta gives strong momentum reading
     if macd_5m is not None and macd_5m.get("hist") is not None and macd_5m.get("histDelta") is not None:
-        if macd_5m["histDelta"] > 0:
-            up += 1
-        if macd_5m["histDelta"] < 0:
-            down += 1
+        # High importance for 5m momentum
+        if macd_5m["hist"] > 0 and macd_5m["histDelta"] > 0:
+            up += 4
+        elif macd_5m["hist"] < 0 and macd_5m["histDelta"] < 0:
+            down += 4
+        elif macd_5m["histDelta"] > 0:
+            up += 2
+        elif macd_5m["histDelta"] < 0:
+            down += 2
+
+    # 5. 5m Heiken Ashi (Trend Strength and Exhaustion)
+    # Early trends (1x to 5x) are strong, especially when mixed with MACD.
+    # High counts (6x to 10x+) indicate exhaustion. "it should stop looking for entry until a sell comes"
+    if heiken_5m_color:
+        count = heiken_5m_count or 0
+        if heiken_5m_color == "green":
+            if 1 <= count <= 5:
+                up += 5  # Strong momentum boost
+            elif count >= 6:
+                up = 0.5 # Exhaustion: hard reset/suppress Buy score
+        elif heiken_5m_color == "red":
+            if 1 <= count <= 5:
+                down += 5 # Strong momentum boost
+            elif count >= 6:
+                down = 0.5 # Exhaustion: hard reset/suppress Sell score
 
     if failed_vwap_reclaim is True:
         down += 3
 
-    raw_up = up / (up + down)
+    # Final protection apply
+    if is_overbought: up = min(up, down) # Buy suppression
+    if is_oversold: down = min(down, up) # Sell suppression
+
+    raw_up = up / (up + down) if (up + down) > 0 else 0.5
     return {"upScore": up, "downScore": down, "rawUp": raw_up}
 
 def apply_time_awareness(raw_up: float, remaining_minutes: float, window_minutes: float) -> Dict[str, float]:
@@ -141,6 +161,10 @@ def decide(inputs: Dict[str, Any]) -> Dict[str, Any]:
     edge_down = inputs.get("edgeDown")
     model_up = inputs.get("modelUp")
     model_down = inputs.get("modelDown")
+
+    # Time remaining strictness: avoid late entries (< 2.5 mins left)
+    if remaining_minutes is not None and remaining_minutes < 2.5:
+        return {"action": "NO_TRADE", "side": None, "phase": "LATE", "reason": "time_exhaustion"}
 
     phase = "EARLY" if remaining_minutes > 10 else "MID" if remaining_minutes > 5 else "LATE"
     threshold = 0.05 if phase == "EARLY" else 0.1 if phase == "MID" else 0.2
