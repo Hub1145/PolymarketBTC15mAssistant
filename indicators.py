@@ -1,136 +1,48 @@
+import pandas as pd
+from ta.momentum import RSIIndicator
+from ta.trend import MACD, EMAIndicator
 from typing import List, Optional, Dict
 
 def clamp(x: float, min_val: float, max_val: float) -> float:
     return max(min_val, min(max_val, x))
 
 def compute_rsi(closes: List[float], period: int) -> Optional[float]:
-    if not isinstance(closes, list) or len(closes) < period + 1:
+    if len(closes) < period:
         return None
-
-    gains = 0.0
-    losses = 0.0
-    for i in range(len(closes) - period, len(closes)):
-        prev = closes[i - 1]
-        cur = closes[i]
-        diff = cur - prev
-        if diff > 0:
-            gains += diff
-        else:
-            losses += -diff
-
-    avg_gain = gains / period
-    avg_loss = losses / period
-    if avg_loss == 0:
-        return 100.0
-    rs = avg_gain / avg_loss
-    rsi = 100.0 - 100.0 / (1.0 + rs)
-    return clamp(rsi, 0.0, 100.0)
-
-def sma(values: List[float], period: int) -> Optional[float]:
-    if not isinstance(values, list) or len(values) < period:
-        return None
-    slice_vals = values[-period:]
-    return sum(slice_vals) / period
-
-def slope_last(values: List[float], points: int) -> Optional[float]:
-    if not isinstance(values, list) or len(values) < points:
-        return None
-    slice_vals = values[-points:]
-    first = slice_vals[0]
-    last = slice_vals[-1]
-    return (last - first) / (points - 1)
-
-def ema(values: List[float], period: int) -> Optional[float]:
-    if not isinstance(values, list) or len(values) < period:
-        return None
-
-    k = 2 / (period + 1)
-    prev = values[0]
-    for i in range(1, len(values)):
-        prev = values[i] * k + prev * (1 - k)
-    return prev
+    series = pd.Series(closes)
+    rsi = RSIIndicator(close=series, window=period).rsi()
+    val = rsi.iloc[-1]
+    return float(val) if not pd.isna(val) else None
 
 def compute_ema_series(values: List[float], period: int) -> List[Optional[float]]:
-    if not isinstance(values, list) or len(values) < period:
+    if len(values) < period:
         return [None] * len(values)
-
-    series = [None] * (period - 1)
-    k = 2 / (period + 1)
-
-    # Simple SMA for the first EMA point
-    first_ema = sum(values[:period]) / period
-    series.append(first_ema)
-
-    current_ema = first_ema
-    for i in range(period, len(values)):
-        current_ema = values[i] * k + current_ema * (1 - k)
-        series.append(current_ema)
-    return series
+    series = pd.Series(values)
+    ema = EMAIndicator(close=series, window=period).ema_indicator()
+    return [float(x) if not pd.isna(x) else None for x in ema.tolist()]
 
 def compute_macd(closes: List[float], fast: int, slow: int, signal: int) -> Optional[Dict]:
-    if not isinstance(closes, list) or len(closes) < slow + signal:
+    if len(closes) < slow:
         return None
+    series = pd.Series(closes)
+    macd_ind = MACD(close=series, window_fast=fast, window_slow=slow, window_sign=signal)
 
-    fast_ema = ema(closes, fast)
-    slow_ema = ema(closes, slow)
-    if fast_ema is None or slow_ema is None:
-        return None
+    macd_line = macd_ind.macd().iloc[-1]
+    signal_line = macd_ind.macd_signal().iloc[-1]
+    hist = macd_ind.macd_diff().iloc[-1]
 
-    macd_line = fast_ema - slow_ema
-
-    macd_series = []
-    for i in range(len(closes)):
-        sub = closes[: i + 1]
-        f = ema(sub, fast)
-        s = ema(sub, slow)
-        if f is None or s is None:
-            continue
-        macd_series.append(f - s)
-
-    signal_line = ema(macd_series, signal)
-    if signal_line is None:
-        return None
-
-    hist = macd_line - signal_line
-    last_hist = hist
-
-    prev_hist = None
-    if len(macd_series) >= signal + 1:
-        prev_sub = macd_series[:-1]
-        prev_signal = ema(prev_sub, signal)
-        if prev_signal is not None:
-             prev_hist = macd_series[-2] - prev_signal
+    # Prev hist for delta
+    prev_hist = macd_ind.macd_diff().iloc[-2] if len(closes) > 1 else None
 
     return {
-        "macd": macd_line,
-        "signal": signal_line,
-        "hist": hist,
-        "histDelta": last_hist - prev_hist if prev_hist is not None else None
+        "macd": float(macd_line) if not pd.isna(macd_line) else None,
+        "signal": float(signal_line) if not pd.isna(signal_line) else None,
+        "hist": float(hist) if not pd.isna(hist) else None,
+        "histDelta": float(hist - prev_hist) if not pd.isna(hist) and not pd.isna(prev_hist) else None
     }
 
-def compute_session_vwap(candles: List[Dict]) -> Optional[float]:
-    if not isinstance(candles, list) or len(candles) == 0:
-        return None
-
-    pv = 0.0
-    v = 0.0
-    for c in candles:
-        tp = (c["high"] + c["low"] + c["close"]) / 3
-        pv += tp * c["volume"]
-        v += c["volume"]
-    if v == 0:
-        return None
-    return pv / v
-
-def compute_vwap_series(candles: List[Dict]) -> List[Optional[float]]:
-    series = []
-    for i in range(len(candles)):
-        sub = candles[: i + 1]
-        series.append(compute_session_vwap(sub))
-    return series
-
 def compute_heiken_ashi(candles: List[Dict]) -> List[Dict]:
-    if not isinstance(candles, list) or len(candles) == 0:
+    if not candles:
         return []
 
     ha = []
@@ -158,7 +70,7 @@ def compute_heiken_ashi(candles: List[Dict]) -> List[Dict]:
     return ha
 
 def count_consecutive(ha_candles: List[Dict]) -> Dict:
-    if not isinstance(ha_candles, list) or len(ha_candles) == 0:
+    if not ha_candles:
         return {"color": None, "count": 0}
 
     last = ha_candles[-1]
@@ -175,18 +87,18 @@ def count_consecutive(ha_candles: List[Dict]) -> Dict:
     return {"color": target, "count": count}
 
 def count_consecutive_hist(hist_series: List[float]) -> Dict:
-    if not isinstance(hist_series, list) or len(hist_series) == 0:
+    if not hist_series:
         return {"direction": None, "count": 0}
 
     last = hist_series[-1]
-    if last is None: return {"direction": None, "count": 0}
+    if last is None or pd.isna(last): return {"direction": None, "count": 0}
 
     target = "up" if last > 0 else "down"
 
     count = 0
     for i in range(len(hist_series) - 1, -1, -1):
         val = hist_series[i]
-        if val is None: break
+        if val is None or pd.isna(val): break
         direction = "up" if val > 0 else "down"
         if direction != target:
             break

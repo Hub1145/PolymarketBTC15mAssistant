@@ -37,11 +37,15 @@ def score_direction(inputs: Dict[str, Any]) -> Dict[str, float]:
     down = 1.0
 
     # Trend detection (20-period EMA on 5m)
-    uptrend = price > ema_20 if price and ema_20 else None
+    uptrend = price > ema_20 if (price is not None and ema_20 is not None) else None
 
     # RSI protections
     is_overbought = rsi is not None and rsi > 70
     is_oversold = rsi is not None and rsi < 30
+
+    # Handle missing essential inputs
+    if price is None:
+        return {"upScore": 0, "downScore": 0, "rawUp": 0.5, "uptrend": uptrend}
 
     # 1. 5m MACD Momentum and Exhaustion
     macd_5m_exhausted = macd_5m_hist_count >= 6

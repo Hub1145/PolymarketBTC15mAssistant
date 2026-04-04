@@ -76,7 +76,7 @@
             <p class="text-gray-400 uppercase tracking-widest mb-4 text-xs sm:text-sm">Current Prediction</p>
             <div class="flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-12">
                 <div class="text-center order-2 sm:order-1">
-                    <p class="text-green-400 text-2xl sm:text-4xl font-bold" x-text="(data.analysis?.probability?.adjustedUp * 100).toFixed(1) + '%'"></p>
+                    <p class="text-green-400 text-2xl sm:text-4xl font-bold" x-text="((data.analysis?.probability?.adjustedUp || 0.5) * 100).toFixed(1) + '%'"></p>
                     <p class="text-[10px] sm:text-xs text-gray-500">PROB UP</p>
                 </div>
                 <div class="text-center order-1 sm:order-2">
@@ -86,7 +86,7 @@
                     <p class="text-[10px] sm:text-xs uppercase text-gray-400 font-bold" x-text="data.analysis?.decision?.reason || ''"></p>
                 </div>
                 <div class="text-center order-3">
-                    <p class="text-red-400 text-2xl sm:text-4xl font-bold" x-text="(data.analysis?.probability?.adjustedDown * 100).toFixed(1) + '%'"></p>
+                    <p class="text-red-400 text-2xl sm:text-4xl font-bold" x-text="((data.analysis?.probability?.adjustedDown || 0.5) * 100).toFixed(1) + '%'"></p>
                     <p class="text-[10px] sm:text-xs text-gray-500">PROB DOWN</p>
                 </div>
             </div>
@@ -137,7 +137,7 @@
                     </div>
                     <div class="flex justify-between border-t border-gray-700 pt-2 text-sm sm:text-base">
                         <span class="text-gray-400">Model Edge (UP)</span>
-                        <span :class="data.analysis?.edge?.edgeUp > 0 ? 'text-green-400' : 'text-red-400'" x-text="(data.analysis?.edge?.edgeUp * 100).toFixed(1) + '%'"></span>
+                        <span :class="data.analysis?.edge?.edgeUp > 0 ? 'text-green-400' : 'text-red-400'" x-text="((data.analysis?.edge?.edgeUp || 0) * 100).toFixed(1) + '%'"></span>
                     </div>
                 </div>
             </div>
