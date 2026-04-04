@@ -5,127 +5,94 @@ def clamp(x: float, min_val: float, max_val: float) -> float:
 
 def detect_regime(inputs: Dict[str, Any]) -> Dict[str, str]:
     price = inputs.get("price")
-    vwap = inputs.get("vwap")
-    vwap_slope = inputs.get("vwapSlope")
-    vwap_cross_count = inputs.get("vwapCrossCount")
-    volume_recent = inputs.get("volumeRecent")
-    volume_avg = inputs.get("volumeAvg")
+    ema_20 = inputs.get("ema_20")
 
-    if price is None or vwap is None or vwap_slope is None:
+    if price is None or ema_20 is None:
         return {"regime": "CHOP", "reason": "missing_inputs"}
 
-    above = price > vwap
+    above = price > ema_20
 
-    low_volume = volume_recent < 0.6 * volume_avg if volume_recent is not None and volume_avg is not None else False
-    if low_volume and abs((price - vwap) / vwap) < 0.001:
-        return {"regime": "CHOP", "reason": "low_volume_flat"}
-
-    if above and vwap_slope > 0:
-        return {"regime": "TREND_UP", "reason": "price_above_vwap_slope_up"}
-
-    if not above and vwap_slope < 0:
-        return {"regime": "TREND_DOWN", "reason": "price_below_vwap_slope_down"}
-
-    if vwap_cross_count is not None and vwap_cross_count >= 3:
-        return {"regime": "RANGE", "reason": "frequent_vwap_cross"}
-
-    return {"regime": "RANGE", "reason": "default"}
+    if above:
+        return {"regime": "TREND_UP", "reason": "price_above_ema20"}
+    else:
+        return {"regime": "TREND_DOWN", "reason": "price_below_ema20"}
 
 def score_direction(inputs: Dict[str, Any]) -> Dict[str, float]:
     price = inputs.get("price")
-    vwap = inputs.get("vwap")
-    vwap_slope = inputs.get("vwapSlope")
+    ema_20 = inputs.get("ema_20")
     rsi = inputs.get("rsi")
-    rsi_slope = inputs.get("rsiSlope")
-    macd = inputs.get("macd")
-    heiken_color = inputs.get("heikenColor")
-    heiken_count = inputs.get("heikenCount")
-    failed_vwap_reclaim = inputs.get("failedVwapReclaim")
 
-    # 5m indicators
+    macd_1m = inputs.get("macd")
+    ha_1m_color = inputs.get("heikenColor")
+    ha_1m_count = inputs.get("heikenCount")
+
     macd_5m = inputs.get("macd_5m")
-    heiken_5m_color = inputs.get("heiken_5m_color")
-    heiken_5m_count = inputs.get("heiken_5m_count")
+    macd_5m_hist_color = macd_5m.get("histColor") if macd_5m else None
+    macd_5m_hist_count = macd_5m.get("histCount") if macd_5m else 0
+
+    ha_5m_color = inputs.get("heiken_5m_color")
+    ha_5m_count = inputs.get("heiken_5m_count")
 
     up = 1.0
     down = 1.0
 
-    # 1. RSI Overbought/Oversold Protections
-    # If overbought (>70), avoid new buys (reset up score if it was high)
-    # If oversold (<30), avoid new sells (reset down score if it was high)
+    # Trend detection (20-period EMA on 5m)
+    uptrend = price > ema_20 if price and ema_20 else None
+
+    # RSI protections
     is_overbought = rsi is not None and rsi > 70
     is_oversold = rsi is not None and rsi < 30
 
-    if price is not None and vwap is not None:
-        if price > vwap:
-            up += 2
-        if price < vwap:
-            down += 2
+    # 1. 5m MACD Momentum and Exhaustion
+    macd_5m_exhausted = macd_5m_hist_count >= 6
+    if macd_5m_hist_color == "green":
+        if 1 <= macd_5m_hist_count <= 5:
+            up += 6
+        elif macd_5m_exhausted:
+            up = 0.5 # Suppress buy
+    elif macd_5m_hist_color == "red":
+        if 1 <= macd_5m_hist_count <= 5:
+            down += 6
+        elif macd_5m_exhausted:
+            down = 0.5 # Suppress sell
 
-    if vwap_slope is not None:
-        if vwap_slope > 0:
-            up += 2
-        if vwap_slope < 0:
-            down += 2
-
-    if rsi is not None and rsi_slope is not None:
-        if not is_overbought and rsi > 55 and rsi_slope > 0:
-            up += 2
-        if not is_oversold and rsi < 45 and rsi_slope < 0:
-            down += 2
-
-    # 2. MACD (1m)
-    if macd is not None and macd.get("hist") is not None and macd.get("histDelta") is not None:
-        if macd["hist"] > 0 and macd["histDelta"] > 0:
-            up += 2
-        if macd["hist"] < 0 and macd["histDelta"] < 0:
-            down += 2
-
-    # 3. Heiken Ashi (1m)
-    if heiken_color:
-        if heiken_color == "green" and heiken_count >= 2:
-            up += 1
-        if heiken_color == "red" and heiken_count >= 2:
-            down += 1
-
-    # 4. 5m MACD (Extremely Important - provides 5m & 15m context)
-    # 5m MACD histogram delta gives strong momentum reading
-    if macd_5m is not None and macd_5m.get("hist") is not None and macd_5m.get("histDelta") is not None:
-        # High importance for 5m momentum
-        if macd_5m["hist"] > 0 and macd_5m["histDelta"] > 0:
+    # 2. 5m Heiken Ashi Momentum and Exhaustion
+    ha_5m_exhausted = ha_5m_count >= 6
+    if ha_5m_color == "green":
+        if 1 <= ha_5m_count <= 5:
             up += 4
-        elif macd_5m["hist"] < 0 and macd_5m["histDelta"] < 0:
+        elif ha_5m_exhausted:
+            up = 0.5 # Suppress buy
+    elif ha_5m_color == "red":
+        if 1 <= ha_5m_count <= 5:
             down += 4
-        elif macd_5m["histDelta"] > 0:
-            up += 2
-        elif macd_5m["histDelta"] < 0:
-            down += 2
+        elif ha_5m_exhausted:
+            down = 0.5 # Suppress sell
 
-    # 5. 5m Heiken Ashi (Trend Strength and Exhaustion)
-    # Early trends (1x to 5x) are strong, especially when mixed with MACD.
-    # High counts (6x to 10x+) indicate exhaustion. "it should stop looking for entry until a sell comes"
-    if heiken_5m_color:
-        count = heiken_5m_count or 0
-        if heiken_5m_color == "green":
-            if 1 <= count <= 5:
-                up += 5  # Strong momentum boost
-            elif count >= 6:
-                up = 0.5 # Exhaustion: hard reset/suppress Buy score
-        elif heiken_5m_color == "red":
-            if 1 <= count <= 5:
-                down += 5 # Strong momentum boost
-            elif count >= 6:
-                down = 0.5 # Exhaustion: hard reset/suppress Sell score
+    # 3. New Momentum Detection
+    # If MACD exhausted, new HA start forming => sign of new momentum
+    if macd_5m_exhausted and ha_5m_color and ha_5m_count <= 2:
+        if ha_5m_color == "green" and uptrend:
+            up += 10 # Strong signal
+        elif ha_5m_color == "red" and not uptrend:
+            down += 10 # Strong signal
 
-    if failed_vwap_reclaim is True:
-        down += 3
+    # If HA exhausted, new MACD histogram start => signal
+    if ha_5m_exhausted and macd_5m_hist_color and macd_5m_hist_count <= 2:
+        if macd_5m_hist_color == "green" and uptrend:
+            up += 10
+        elif macd_5m_hist_color == "red" and not uptrend:
+            down += 10
 
-    # Final protection apply
-    if is_overbought: up = min(up, down) # Buy suppression
-    if is_oversold: down = min(down, up) # Sell suppression
+    # 4. Global Filters
+    if is_overbought: up = 0.1
+    if is_oversold: down = 0.1
+
+    if uptrend is False: up = min(up, 1.0)
+    if uptrend is True: down = min(down, 1.0)
 
     raw_up = up / (up + down) if (up + down) > 0 else 0.5
-    return {"upScore": up, "downScore": down, "rawUp": raw_up}
+    return {"upScore": up, "downScore": down, "rawUp": raw_up, "uptrend": uptrend}
 
 def apply_time_awareness(raw_up: float, remaining_minutes: float, window_minutes: float) -> Dict[str, float]:
     time_decay = clamp(remaining_minutes / window_minutes, 0, 1)

@@ -102,8 +102,8 @@
                         <span :class="data.indicators?.rsi > 70 ? 'text-red-400' : (data.indicators?.rsi < 30 ? 'text-green-400' : 'text-white')" x-text="data.indicators?.rsi?.toFixed(2) || '-'"></span>
                     </div>
                     <div class="flex justify-between text-sm sm:text-base">
-                        <span class="text-gray-400">VWAP</span>
-                        <span x-text="'$' + (data.indicators?.vwap?.toFixed(0) || '-')"></span>
+                        <span class="text-gray-400">Trend (5m EMA 20)</span>
+                        <span :class="data.analysis?.regime?.regime === 'TREND_UP' ? 'text-green-400' : 'text-red-400'" x-text="data.analysis?.regime?.regime === 'TREND_UP' ? 'Bullish ↑' : 'Bearish ↓'"></span>
                     </div>
                     <div class="flex justify-between text-sm sm:text-base">
                         <span class="text-gray-400">Heiken Ashi (1m)</span>
@@ -114,8 +114,8 @@
                         <span :class="data.indicators?.heiken_5m?.color === 'green' ? 'text-green-400' : 'text-red-400'" x-text="(data.indicators?.heiken_5m?.color || '-') + ' x' + (data.indicators?.heiken_5m?.count || 0)"></span>
                     </div>
                     <div class="flex justify-between text-sm sm:text-base">
-                        <span class="text-gray-400">MACD (5m)</span>
-                        <span :class="data.indicators?.macd_5m?.histDelta > 0 ? 'text-green-400' : 'text-red-400'" x-text="data.indicators?.macd_5m?.histDelta > 0 ? 'Rising ↑' : 'Falling ↓'"></span>
+                        <span class="text-gray-400">MACD Hist (5m)</span>
+                        <span :class="data.indicators?.macd_5m?.histColor === 'green' ? 'text-green-400' : 'text-red-400'" x-text="(data.indicators?.macd_5m?.histColor || '-') + ' x' + (data.indicators?.macd_5m?.histCount || 0)"></span>
                     </div>
                     <div class="flex justify-between text-sm sm:text-base">
                         <span class="text-gray-400">Market Regime</span>

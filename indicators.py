@@ -50,6 +50,23 @@ def ema(values: List[float], period: int) -> Optional[float]:
         prev = values[i] * k + prev * (1 - k)
     return prev
 
+def compute_ema_series(values: List[float], period: int) -> List[Optional[float]]:
+    if not isinstance(values, list) or len(values) < period:
+        return [None] * len(values)
+
+    series = [None] * (period - 1)
+    k = 2 / (period + 1)
+
+    # Simple SMA for the first EMA point
+    first_ema = sum(values[:period]) / period
+    series.append(first_ema)
+
+    current_ema = first_ema
+    for i in range(period, len(values)):
+        current_ema = values[i] * k + current_ema * (1 - k)
+        series.append(current_ema)
+    return series
+
 def compute_macd(closes: List[float], fast: int, slow: int, signal: int) -> Optional[Dict]:
     if not isinstance(closes, list) or len(closes) < slow + signal:
         return None
@@ -156,3 +173,23 @@ def count_consecutive(ha_candles: List[Dict]) -> Dict:
         count += 1
 
     return {"color": target, "count": count}
+
+def count_consecutive_hist(hist_series: List[float]) -> Dict:
+    if not isinstance(hist_series, list) or len(hist_series) == 0:
+        return {"direction": None, "count": 0}
+
+    last = hist_series[-1]
+    if last is None: return {"direction": None, "count": 0}
+
+    target = "up" if last > 0 else "down"
+
+    count = 0
+    for i in range(len(hist_series) - 1, -1, -1):
+        val = hist_series[i]
+        if val is None: break
+        direction = "up" if val > 0 else "down"
+        if direction != target:
+            break
+        count += 1
+
+    return {"direction": target, "count": count}

@@ -149,6 +149,27 @@ async def fetch_polymarket_snapshot() -> Dict[str, Any]:
     }
 
 async def execute_trade(decision: Dict[str, Any], market_prices: Dict[str, Any], market: Dict[str, Any]):
+    # Handle Reversals: if we have an active trade and decision is ENTER on the OTHER side, close the current one
+    if decision["action"] == "ENTER":
+        side = decision["side"]
+        other_side = "DOWN" if side == "UP" else "UP"
+
+        for trade in state["active_trades"]:
+            if trade["market_id"] == market["id"] and trade["side"] == other_side:
+                # REVERSAL logic: check if Polymarket odds are favorable (< 50)
+                odds = market_prices["up"] if side == "UP" else market_prices["down"]
+                if odds is not None and odds < 0.5:
+                    log_message(f"REVERSAL: Signal switched to {side} with favorable odds {odds:.2f}. Closing {other_side} trade.")
+                    trade["status"] = "CLOSED_REVERSAL"
+                    trade["exit_time"] = datetime.now().isoformat()
+                    # Simulating closure: reset balance (in paper mode)
+                    payout = trade["shares"] * (market_prices["up"] if other_side == "UP" else market_prices["down"])
+                    state["paper_balance"] += payout
+                    trade["profit_loss"] = payout - trade["amount"]
+                    state["trade_history"].append(trade)
+                    state["active_trades"].remove(trade)
+                    break
+
     if decision["action"] != "ENTER":
         return
 
@@ -323,54 +344,47 @@ async def update_loop():
             time_left_min = (settlement_ms - time.time() * 1000) / 60_000 if settlement_ms else timing["remainingMinutes"]
 
             closes = [c["close"] for c in klines_1m]
-            vwap_now = indicators.compute_session_vwap(klines_1m)
-            vwap_series = indicators.compute_vwap_series(klines_1m)
-
-            lookback = settings.VWAP_SLOPE_LOOKBACK_MINUTES
-            vwap_slope = (vwap_now - vwap_series[-lookback]) / lookback if vwap_now and len(vwap_series) >= lookback and vwap_series[-lookback] else None
-
             rsi_now = indicators.compute_rsi(closes, settings.RSI_PERIOD)
-
-            rsi_series_limited = []
-            for i in range(len(closes) - 5, len(closes)):
-                r = indicators.compute_rsi(closes[:i+1], settings.RSI_PERIOD)
-                if r is not None: rsi_series_limited.append(r)
-            rsi_slope = indicators.slope_last(rsi_series_limited, 3)
-
             macd = indicators.compute_macd(closes, settings.MACD_FAST, settings.MACD_SLOW, settings.MACD_SIGNAL)
-
             ha = indicators.compute_heiken_ashi(klines_1m)
             consec = indicators.count_consecutive(ha)
 
             # 5m indicators
             closes_5m = [c["close"] for c in klines_5m]
+            if len(closes_5m) < 20:
+                await asyncio.sleep(1)
+                continue
+            ema_20_5m_series = indicators.compute_ema_series(closes_5m, 20)
+            ema_20_5m = ema_20_5m_series[-1]
+
             macd_5m = indicators.compute_macd(closes_5m, settings.MACD_FAST, settings.MACD_SLOW, settings.MACD_SIGNAL)
+            # Fetch histogram series for consecutive count
+            hist_series_5m = []
+            for i in range(len(closes_5m)):
+                m = indicators.compute_macd(closes_5m[:i+1], settings.MACD_FAST, settings.MACD_SLOW, settings.MACD_SIGNAL)
+                hist_series_5m.append(m["hist"] if m else None)
+
+            consec_hist_5m = indicators.count_consecutive_hist(hist_series_5m)
+
             ha_5m = indicators.compute_heiken_ashi(klines_5m)
             consec_5m = indicators.count_consecutive(ha_5m)
 
-            failed_vwap_reclaim = False
-            if vwap_now and len(vwap_series) >= 2:
-                failed_vwap_reclaim = closes[-1] < vwap_now and closes[-2] > vwap_series[-2]
-
             regime_info = engines.detect_regime({
                 "price": spot_price,
-                "vwap": vwap_now,
-                "vwapSlope": vwap_slope,
-                "volumeRecent": sum(c["volume"] for c in klines_1m[-20:]),
-                "volumeAvg": sum(c["volume"] for c in klines_1m[-120:]) / 6
+                "ema_20": ema_20_5m
             })
 
             scored = engines.score_direction({
                 "price": spot_price,
-                "vwap": vwap_now,
-                "vwapSlope": vwap_slope,
+                "ema_20": ema_20_5m,
                 "rsi": rsi_now,
-                "rsiSlope": rsi_slope,
                 "macd": macd,
                 "heikenColor": consec["color"],
                 "heikenCount": consec["count"],
-                "failedVwapReclaim": failed_vwap_reclaim,
-                "macd_5m": macd_5m,
+                "macd_5m": {
+                    "histColor": consec_hist_5m["direction"],
+                    "histCount": consec_hist_5m["count"]
+                },
                 "heiken_5m_color": consec_5m["color"],
                 "heiken_5m_count": consec_5m["count"]
             })
