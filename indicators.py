@@ -2,44 +2,65 @@ import pandas as pd
 from ta.momentum import RSIIndicator
 from ta.trend import MACD, EMAIndicator
 from typing import List, Optional, Dict
-
-def clamp(x: float, min_val: float, max_val: float) -> float:
-    return max(min_val, min(max_val, x))
+from utils import clamp
 
 def compute_rsi(closes: List[float], period: int) -> Optional[float]:
-    if len(closes) < period:
+    if not closes or len(closes) < period:
         return None
     series = pd.Series(closes)
     rsi = RSIIndicator(close=series, window=period).rsi()
+    if rsi.empty: return None
     val = rsi.iloc[-1]
     return float(val) if not pd.isna(val) else None
 
 def compute_ema_series(values: List[float], period: int) -> List[Optional[float]]:
+    if not values: return []
     if len(values) < period:
         return [None] * len(values)
     series = pd.Series(values)
     ema = EMAIndicator(close=series, window=period).ema_indicator()
     return [float(x) if not pd.isna(x) else None for x in ema.tolist()]
 
+def compute_macd_series(closes: List[float], fast: int, slow: int, signal: int) -> List[Optional[float]]:
+    if not closes or len(closes) < slow:
+        return [None] * len(closes)
+    try:
+        series = pd.Series(closes)
+        macd_ind = MACD(close=series, window_fast=fast, window_slow=slow, window_sign=signal)
+        h_series = macd_ind.macd_diff()
+        return [float(x) if not pd.isna(x) else None for x in h_series.tolist()]
+    except:
+        return [None] * len(closes)
+
 def compute_macd(closes: List[float], fast: int, slow: int, signal: int) -> Optional[Dict]:
-    if len(closes) < slow:
+    if not closes or len(closes) < slow:
         return None
-    series = pd.Series(closes)
-    macd_ind = MACD(close=series, window_fast=fast, window_slow=slow, window_sign=signal)
+    try:
+        series = pd.Series(closes)
+        macd_ind = MACD(close=series, window_fast=fast, window_slow=slow, window_sign=signal)
 
-    macd_line = macd_ind.macd().iloc[-1]
-    signal_line = macd_ind.macd_signal().iloc[-1]
-    hist = macd_ind.macd_diff().iloc[-1]
+        m_series = macd_ind.macd()
+        s_series = macd_ind.macd_signal()
+        h_series = macd_ind.macd_diff()
 
-    # Prev hist for delta
-    prev_hist = macd_ind.macd_diff().iloc[-2] if len(closes) > 1 else None
+        if m_series.empty or s_series.empty or h_series.empty:
+            return None
 
-    return {
-        "macd": float(macd_line) if not pd.isna(macd_line) else None,
-        "signal": float(signal_line) if not pd.isna(signal_line) else None,
-        "hist": float(hist) if not pd.isna(hist) else None,
-        "histDelta": float(hist - prev_hist) if not pd.isna(hist) and not pd.isna(prev_hist) else None
-    }
+        macd_line = m_series.iloc[-1]
+        signal_line = s_series.iloc[-1]
+        hist = h_series.iloc[-1]
+
+        # Prev hist for delta
+        prev_hist = h_series.iloc[-2] if len(h_series) > 1 else None
+
+        return {
+            "macd": float(macd_line) if not pd.isna(macd_line) else None,
+            "signal": float(signal_line) if not pd.isna(signal_line) else None,
+            "hist": float(hist) if not pd.isna(hist) else None,
+            "histDelta": float(hist - prev_hist) if not pd.isna(hist) and not pd.isna(prev_hist) else None
+        }
+    except:
+        return None
 
 def compute_heiken_ashi(candles: List[Dict]) -> List[Dict]:
     if not candles:

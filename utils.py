@@ -2,6 +2,9 @@ import csv
 import os
 from typing import List, Any
 
+def clamp(x: float, min_val: float, max_val: float) -> float:
+    return max(min_val, min(max_val, x))
+
 def ensure_dir(dir_path: str):
     if not os.path.exists(dir_path):
         os.makedirs(dir_path, exist_ok=True)

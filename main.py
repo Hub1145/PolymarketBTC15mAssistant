@@ -321,7 +321,7 @@ async def update_loop():
             klines_1m = binance_kline_1m.get_candles()
             klines_5m = binance_kline_5m.get_candles()
 
-            spot_price = binance_ws.get("price") or last_price
+            spot_price = binance_ws.get("price") if binance_ws and binance_ws.get("price") else last_price
 
             # Polymarket Chainlink Price Logic with explicit source tracking
             current_price = None
@@ -351,23 +351,22 @@ async def update_loop():
 
             # 5m indicators
             closes_5m = [c["close"] for c in klines_5m]
-            if len(closes_5m) < 20:
-                await asyncio.sleep(1)
-                continue
-            ema_20_5m_series = indicators.compute_ema_series(closes_5m, 20)
-            ema_20_5m = ema_20_5m_series[-1]
+            ema_20_5m = None
+            consec_hist_5m = {"direction": None, "count": 0}
+            consec_5m = {"color": None, "count": 0}
+            macd_5m = None
 
-            macd_5m = indicators.compute_macd(closes_5m, settings.MACD_FAST, settings.MACD_SLOW, settings.MACD_SIGNAL)
-            # Fetch histogram series for consecutive count
-            hist_series_5m = []
-            for i in range(len(closes_5m)):
-                m = indicators.compute_macd(closes_5m[:i+1], settings.MACD_FAST, settings.MACD_SLOW, settings.MACD_SIGNAL)
-                hist_series_5m.append(m["hist"] if m else None)
+            if len(closes_5m) >= 20:
+                ema_20_5m_series = indicators.compute_ema_series(closes_5m, 20)
+                ema_20_5m = ema_20_5m_series[-1]
 
-            consec_hist_5m = indicators.count_consecutive_hist(hist_series_5m)
+                macd_5m = indicators.compute_macd(closes_5m, settings.MACD_FAST, settings.MACD_SLOW, settings.MACD_SIGNAL)
+                # Optimized single-pass MACD histogram series calculation
+                hist_series_5m = indicators.compute_macd_series(closes_5m, settings.MACD_FAST, settings.MACD_SLOW, settings.MACD_SIGNAL)
+                consec_hist_5m = indicators.count_consecutive_hist(hist_series_5m)
 
-            ha_5m = indicators.compute_heiken_ashi(klines_5m)
-            consec_5m = indicators.count_consecutive(ha_5m)
+                ha_5m = indicators.compute_heiken_ashi(klines_5m)
+                consec_5m = indicators.count_consecutive(ha_5m)
 
             regime_info = engines.detect_regime({
                 "price": spot_price,
@@ -388,6 +387,10 @@ async def update_loop():
                 "heiken_5m_color": consec_5m["color"],
                 "heiken_5m_count": consec_5m["count"]
             })
+
+            # Temporary fix for UI values if indicators failed
+            rsi_val = rsi_now
+            ema_val = ema_20_5m
 
             time_aware = engines.apply_time_awareness(scored["rawUp"], time_left_min, settings.CANDLE_WINDOW_MINUTES)
 
@@ -441,11 +444,14 @@ async def update_loop():
                     "poly_down": market_down
                 },
                 "indicators": {
-                    "rsi": rsi_now,
-                    "vwap": vwap_now,
+                    "rsi": rsi_val,
+                    "ema_20": ema_val,
                     "macd": macd,
                     "heiken": consec,
-                    "macd_5m": macd_5m,
+                    "macd_5m": {
+                        "histColor": consec_hist_5m["direction"],
+                        "histCount": consec_hist_5m["count"]
+                    },
                     "heiken_5m": consec_5m
                 },
                 "analysis": {
@@ -524,16 +530,20 @@ async def post_settings(new_settings: Dict[str, Any]):
     # Check if critical stream settings changed
     old_symbol = settings.SYMBOL
 
+    # Secret handling: if new_settings['private_key'] is masked (contains '...'),
+    # we don't update settings.PRIVATE_KEY and we don't save the masked value to disk.
+    new_pk = new_settings.get("private_key")
+    if new_pk and "..." in new_pk:
+        new_settings["private_key"] = settings.PRIVATE_KEY # Restore real key to save it properly
+    elif new_pk:
+        settings.PRIVATE_KEY = new_pk
+
     # Save to config.json
     with open("config.json", "w") as f:
         json.dump(new_settings, f, indent=2)
 
     settings.MODE = new_settings.get("mode", settings.MODE)
     settings.PAPER_BALANCE_USD = float(new_settings.get("paper_balance_usd", settings.PAPER_BALANCE_USD))
-
-    new_pk = new_settings.get("private_key")
-    if new_pk and "..." not in new_pk:
-        settings.PRIVATE_KEY = new_pk
 
     if "trading" in new_settings:
         t = new_settings["trading"]

@@ -103,7 +103,8 @@
                     </div>
                     <div class="flex justify-between text-sm sm:text-base">
                         <span class="text-gray-400">Trend (5m EMA 20)</span>
-                        <span :class="data.analysis?.regime?.regime === 'TREND_UP' ? 'text-green-400' : 'text-red-400'" x-text="data.analysis?.regime?.regime === 'TREND_UP' ? 'Bullish ↑' : 'Bearish ↓'"></span>
+                        <span :class="data.analysis?.regime?.regime === 'TREND_UP' ? 'text-green-400' : (data.analysis?.regime?.regime === 'TREND_DOWN' ? 'text-red-400' : 'text-gray-400')"
+                              x-text="data.analysis?.regime?.regime === 'TREND_UP' ? 'Bullish ↑' : (data.analysis?.regime?.regime === 'TREND_DOWN' ? 'Bearish ↓' : 'Neutral')"></span>
                     </div>
                     <div class="flex justify-between text-sm sm:text-base">
                         <span class="text-gray-400">Heiken Ashi (1m)</span>

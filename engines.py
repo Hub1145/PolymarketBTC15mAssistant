@@ -1,7 +1,5 @@
 from typing import Dict, Optional, Any
-
-def clamp(x: float, min_val: float, max_val: float) -> float:
-    return max(min_val, min(max_val, x))
+from utils import clamp
 
 def detect_regime(inputs: Dict[str, Any]) -> Dict[str, str]:
     price = inputs.get("price")
