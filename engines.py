@@ -140,7 +140,17 @@ def score_direction(inputs: Dict[str, Any]) -> Dict[str, float]:
     if uptrend is False: up = min(up, 1.0)
     if uptrend is True: down = min(down, 1.0)
 
+    import math
+    def safe_score(v):
+        if v is None or (isinstance(v, float) and math.isnan(v)): return 0.5
+        return v
+
+    up = safe_score(up)
+    down = safe_score(down)
+
     raw_up = up / (up + down) if (up + down) > 0 else 0.5
+    if math.isnan(raw_up): raw_up = 0.5
+
     return {"upScore": up, "downScore": down, "rawUp": raw_up, "uptrend": uptrend}
 
 def apply_time_awareness(raw_up: float, remaining_minutes: float, window_minutes: float) -> Dict[str, float]:

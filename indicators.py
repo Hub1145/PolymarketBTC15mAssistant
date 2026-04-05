@@ -224,7 +224,7 @@ def compute_macd_series(closes: List[float], fast: int, slow: int, signal: int) 
         series = pd.Series(closes)
         macd_ind = MACD(close=series, window_fast=fast, window_slow=slow, window_sign=signal)
         h_series = macd_ind.macd_diff()
-        return [float(x) if not pd.isna(x) else None for x in h_series.tolist()]
+        return [float(x) if not pd.isna(x) and not np.isnan(x) else None for x in h_series.tolist()]
     except:
         return [None] * len(closes)
 
@@ -249,11 +249,19 @@ def compute_macd(closes: List[float], fast: int, slow: int, signal: int) -> Opti
         # Prev hist for delta
         prev_hist = h_series.iloc[-2] if len(h_series) > 1 else None
 
+        def safe_float(v):
+            if v is None or pd.isna(v) or np.isnan(v): return None
+            return float(v)
+
+        h_delta = None
+        if hist is not None and prev_hist is not None and not pd.isna(hist) and not pd.isna(prev_hist):
+            h_delta = safe_float(hist - prev_hist)
+
         return {
-            "macd": float(macd_line) if not pd.isna(macd_line) else None,
-            "signal": float(signal_line) if not pd.isna(signal_line) else None,
-            "hist": float(hist) if not pd.isna(hist) else None,
-            "histDelta": float(hist - prev_hist) if not pd.isna(hist) and not pd.isna(prev_hist) else None
+            "macd": safe_float(macd_line),
+            "signal": safe_float(signal_line),
+            "hist": safe_float(hist),
+            "histDelta": h_delta
         }
     except:
         return None
