@@ -102,9 +102,9 @@
                         <span :class="data.indicators?.rsi > 70 ? 'text-red-400' : (data.indicators?.rsi < 30 ? 'text-green-400' : 'text-white')" x-text="data.indicators?.rsi?.toFixed(2) || '-'"></span>
                     </div>
                     <div class="flex justify-between text-sm sm:text-base">
-                        <span class="text-gray-400">Trend (5m EMA 20)</span>
-                        <span :class="data.analysis?.regime?.regime === 'TREND_UP' ? 'text-green-400' : (data.analysis?.regime?.regime === 'TREND_DOWN' ? 'text-red-400' : 'text-gray-400')"
-                              x-text="data.analysis?.regime?.regime === 'TREND_UP' ? 'Bullish ↑' : (data.analysis?.regime?.regime === 'TREND_DOWN' ? 'Bearish ↓' : 'Neutral')"></span>
+                        <span class="text-gray-400">Trend (ST Cluster)</span>
+                        <span :class="data.indicators?.st_cluster?.regime === 1 ? 'text-green-400' : (data.indicators?.st_cluster?.regime === -1 ? 'text-red-400' : 'text-gray-400')"
+                              x-text="(data.indicators?.st_cluster?.regime === 1 ? 'Bullish ↑' : (data.indicators?.st_cluster?.regime === -1 ? 'Bearish ↓' : 'Neutral')) + ' (' + ((data.indicators?.st_cluster?.strength || 0) * 100).toFixed(0) + '%)'"></span>
                     </div>
                     <div class="flex justify-between text-sm sm:text-base">
                         <span class="text-gray-400">Heiken Ashi (1m)</span>
@@ -117,6 +117,25 @@
                     <div class="flex justify-between text-sm sm:text-base">
                         <span class="text-gray-400">MACD Hist (5m)</span>
                         <span :class="data.indicators?.macd_5m?.histColor === 'green' ? 'text-green-400' : 'text-red-400'" x-text="(data.indicators?.macd_5m?.histColor || '-') + ' x' + (data.indicators?.macd_5m?.histCount || 0)"></span>
+                    </div>
+                    <div class="flex flex-col space-y-1 text-xs border-t border-gray-700 pt-2">
+                        <div class="flex justify-between">
+                            <span class="text-gray-500">MACD (3,15,3)</span>
+                            <span :class="data.indicators?.macd_variants?.['3_15_3']?.histDelta > 0 ? 'text-green-500' : 'text-red-500'" x-text="data.indicators?.macd_variants?.['3_15_3']?.hist?.toFixed(4) || '-'"></span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-500">MACD (4,16,3)</span>
+                            <span :class="data.indicators?.macd_variants?.['4_16_3']?.histDelta > 0 ? 'text-green-500' : 'text-red-500'" x-text="data.indicators?.macd_variants?.['4_16_3']?.hist?.toFixed(4) || '-'"></span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-500">MACD (6,28,5)</span>
+                            <span :class="data.indicators?.macd_variants?.['6_28_5']?.histDelta > 0 ? 'text-green-500' : 'text-red-500'" x-text="data.indicators?.macd_variants?.['6_28_5']?.hist?.toFixed(4) || '-'"></span>
+                        </div>
+                    </div>
+                    <div class="flex justify-between text-sm sm:text-base">
+                        <span class="text-gray-400">CVD Divergence</span>
+                        <span :class="data.indicators?.cvd?.divergence === 'BULLISH' ? 'text-green-400' : (data.indicators?.cvd?.divergence === 'BEARISH' ? 'text-red-400' : 'text-gray-400')"
+                              x-text="data.indicators?.cvd?.divergence || 'NONE'"></span>
                     </div>
                     <div class="flex justify-between text-sm sm:text-base">
                         <span class="text-gray-400">Market Regime</span>
@@ -148,6 +167,7 @@
         <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden mb-8">
             <div class="flex bg-gray-700 overflow-x-auto">
                 <button @click="tab = 'active'" :class="tab === 'active' ? 'bg-gray-800 text-blue-400' : 'text-gray-400 hover:text-white'" class="px-4 sm:px-6 py-3 font-bold uppercase text-[10px] sm:text-sm transition flex-shrink-0">Active Trades</button>
+                <button @click="tab = 'stink'" :class="tab === 'stink' ? 'bg-gray-800 text-blue-400' : 'text-gray-400 hover:text-white'" class="px-4 sm:px-6 py-3 font-bold uppercase text-[10px] sm:text-sm transition flex-shrink-0">Stink Bids</button>
                 <button @click="tab = 'history'" :class="tab === 'history' ? 'bg-gray-800 text-blue-400' : 'text-gray-400 hover:text-white'" class="px-4 sm:px-6 py-3 font-bold uppercase text-[10px] sm:text-sm transition flex-shrink-0">Closed Trades</button>
                 <button @click="tab = 'logs'" :class="tab === 'logs' ? 'bg-gray-800 text-blue-400' : 'text-gray-400 hover:text-white'" class="px-4 sm:px-6 py-3 font-bold uppercase text-[10px] sm:text-sm transition flex-shrink-0">Console Log</button>
             </div>
@@ -182,6 +202,36 @@
                                 </template>
                                 <tr x-show="!data.trading_state?.active_trades?.length">
                                     <td colspan="5" class="py-6 text-center text-gray-600 italic text-xs">No active trades found. Looking for edge...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Stink Bids -->
+                <div x-show="tab === 'stink'">
+                    <h3 class="text-lg sm:text-xl font-bold mb-4">Active Stink Bids (30% Discount)</h3>
+                    <div class="overflow-x-auto -mx-4 sm:mx-0">
+                        <table class="w-full text-left min-w-[500px] sm:min-w-0">
+                            <thead>
+                                <tr class="text-gray-500 text-xs uppercase tracking-wider">
+                                    <th class="px-4 py-2">Market</th>
+                                    <th class="px-4 py-2">Side</th>
+                                    <th class="px-4 py-2">Bid Price</th>
+                                    <th class="px-4 py-2 text-right">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody class="text-[11px] sm:text-sm">
+                                <template x-for="bid in data.trading_state?.stink_bids" :key="bid.ts">
+                                    <tr class="border-t border-gray-700">
+                                        <td class="px-4 py-3" x-text="bid.market_slug"></td>
+                                        <td class="px-4 py-3 font-bold" :class="bid.side === 'UP' ? 'text-green-400' : 'text-red-400'" x-text="bid.side"></td>
+                                        <td class="px-4 py-3 font-mono" x-text="(bid.price * 100).toFixed(1) + '¢'"></td>
+                                        <td class="px-4 py-3 text-right text-gray-500">PENDING FILL</td>
+                                    </tr>
+                                </template>
+                                <tr x-show="!data.trading_state?.stink_bids?.length">
+                                    <td colspan="4" class="py-6 text-center text-gray-600 italic text-xs">No active stink bids.</td>
                                 </tr>
                             </tbody>
                         </table>

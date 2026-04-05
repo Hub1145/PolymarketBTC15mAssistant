@@ -26,6 +26,7 @@ state = {
     "trading_mode": settings.MODE,
     "paper_balance": settings.PAPER_BALANCE_USD,
     "active_trades": [],
+    "stink_bids": [], # Active limit orders
     "trade_history": [],
     "logs": []
 }
@@ -149,27 +150,54 @@ async def fetch_polymarket_snapshot() -> Dict[str, Any]:
     }
 
 async def execute_trade(decision: Dict[str, Any], market_prices: Dict[str, Any], market: Dict[str, Any]):
-    # Handle Reversals: if we have an active trade and decision is ENTER on the OTHER side, close the current one
-    if decision["action"] == "ENTER":
-        side = decision["side"]
-        other_side = "DOWN" if side == "UP" else "UP"
+    # 1. Handle Stink Bids (Limit orders at 30% discount)
+    current_up = market_prices.get("up")
+    current_down = market_prices.get("down")
 
-        for trade in state["active_trades"]:
-            if trade["market_id"] == market["id"] and trade["side"] == other_side:
-                # REVERSAL logic: check if Polymarket odds are favorable (< 50)
-                odds = market_prices["up"] if side == "UP" else market_prices["down"]
-                if odds is not None and odds < 0.5:
-                    log_message(f"REVERSAL: Signal switched to {side} with favorable odds {odds:.2f}. Closing {other_side} trade.")
-                    trade["status"] = "CLOSED_REVERSAL"
-                    trade["exit_time"] = datetime.now().isoformat()
-                    # Simulating closure: reset balance (in paper mode)
-                    payout = trade["shares"] * (market_prices["up"] if other_side == "UP" else market_prices["down"])
-                    state["paper_balance"] += payout
-                    trade["profit_loss"] = payout - trade["amount"]
-                    state["trade_history"].append(trade)
-                    state["active_trades"].remove(trade)
-                    break
+    if current_up and current_down:
+        # Check if we should place new stink bids (limit 2 per side)
+        if len(state["stink_bids"]) < 4:
+            target_up = current_up * 0.7
+            target_down = current_down * 0.7
 
+            # Simulated placement
+            bid_up = {"side": "UP", "price": target_up, "market_id": market["id"], "market_slug": market.get("slug"), "ts": time.time()}
+            bid_down = {"side": "DOWN", "price": target_down, "market_id": market["id"], "market_slug": market.get("slug"), "ts": time.time()}
+
+            # Check if already exists for this market/side
+            if not any(b["side"] == "UP" and b["market_id"] == market["id"] for b in state["stink_bids"]):
+                state["stink_bids"].append(bid_up)
+                log_message(f"Placed STINK BID: UP @ {target_up:.2f} (30% discount) for {market.get('slug')}")
+
+            if not any(b["side"] == "DOWN" and b["market_id"] == market["id"] for b in state["stink_bids"]):
+                state["stink_bids"].append(bid_down)
+                log_message(f"Placed STINK BID: DOWN @ {target_down:.2f} (30% discount) for {market.get('slug')}")
+
+    # Process Stink Bid fills (if bid price >= current ask/price, fill)
+    for bid in state["stink_bids"][:]:
+        market_price = current_up if bid["side"] == "UP" else current_down
+        if market_price and market_price <= bid["price"]:
+            log_message(f"STINK BID FILLED: {bid['side']} @ {bid['price']:.2f} for {bid['market_slug']}")
+            # Convert to trade
+            trade = {
+                "market_id": bid["market_id"],
+                "market_slug": bid["market_slug"],
+                "side": bid["side"],
+                "entry_price": bid["price"],
+                "amount": settings.RISK_VALUE, # Simple fixed amount for stink bids
+                "shares": settings.RISK_VALUE / bid["price"],
+                "entry_time": datetime.now().isoformat(),
+                "status": "OPEN_STINK",
+                "profit_loss": None
+            }
+            state["paper_balance"] -= trade["amount"]
+            state["active_trades"].append(trade)
+            state["stink_bids"].remove(bid)
+
+            # Immediate inverse hedge
+            log_message(f"Simulated Arb: Opened inverse hedge on Hyperliquid due to Stink Bid fill.")
+
+    # 2. Regular entry from decision engine
     if decision["action"] != "ENTER":
         return
 
@@ -207,7 +235,11 @@ async def execute_trade(decision: Dict[str, Any], market_prices: Dict[str, Any],
     if state["trading_mode"] == "paper":
         state["paper_balance"] -= amount_to_risk
         state["active_trades"].append(trade)
+
+        # Simulated Arbitrage Hedge on Hyperliquid
+        # In real scenario, would open short BTC on Hyperliquid
         log_message(f"Executed PAPER trade: {side} @ {price} for {market.get('slug')} (Amount: ${amount_to_risk:.2f})")
+        log_message(f"Simulated Arbitrage: Opened inverse hedge on Hyperliquid for BTC balance protection.")
     else:
         log_message(f"LIVE mode enabled but execution not implemented. Mode: {state['trading_mode']}")
 
@@ -323,6 +355,9 @@ async def update_loop():
 
             spot_price = binance_ws.get("price") if binance_ws and binance_ws.get("price") else last_price
 
+            # CVD Divergence Calculation
+            cvd_data = indicators.detect_cvd_divergence(binance_ws.get("cvd_history", []))
+
             # Polymarket Chainlink Price Logic with explicit source tracking
             current_price = None
             price_source = None
@@ -346,19 +381,30 @@ async def update_loop():
             closes = [c["close"] for c in klines_1m]
             rsi_now = indicators.compute_rsi(closes, settings.RSI_PERIOD)
             macd = indicators.compute_macd(closes, settings.MACD_FAST, settings.MACD_SLOW, settings.MACD_SIGNAL)
+
+            # Backtested MACD Alpha Variants
+            # 1. MACD(3,15,3) limit 150
+            # 2. MACD(4,16,3) limit 58
+            # 3. MACD(6,28,5) limit 58
+            macd_variants = {
+                "3_15_3": indicators.compute_macd(closes[-150:], 3, 15, 3),
+                "4_16_3": indicators.compute_macd(closes[-58:], 4, 16, 3),
+                "6_28_5": indicators.compute_macd(closes[-58:], 6, 28, 5)
+            }
             ha = indicators.compute_heiken_ashi(klines_1m)
             consec = indicators.count_consecutive(ha)
 
             # 5m indicators
             closes_5m = [c["close"] for c in klines_5m]
-            ema_20_5m = None
+            st_cluster_5m = {"regime": 0, "strength": 0, "scBu": 0.5, "scBe": 0.5}
             consec_hist_5m = {"direction": None, "count": 0}
             consec_5m = {"color": None, "count": 0}
             macd_5m = None
 
-            if len(closes_5m) >= 20:
-                ema_20_5m_series = indicators.compute_ema_series(closes_5m, 20)
-                ema_20_5m = ema_20_5m_series[-1]
+            if len(klines_5m) >= 50:
+                # Optimized SuperTrend Cluster calculation
+                df_5m = pd.DataFrame(klines_5m)
+                st_cluster_5m = indicators.compute_supertrend_cluster(df_5m, settings.get_st_params())
 
                 macd_5m = indicators.compute_macd(closes_5m, settings.MACD_FAST, settings.MACD_SLOW, settings.MACD_SIGNAL)
                 # Optimized single-pass MACD histogram series calculation
@@ -369,15 +415,16 @@ async def update_loop():
                 consec_5m = indicators.count_consecutive(ha_5m)
 
             regime_info = engines.detect_regime({
-                "price": spot_price,
-                "ema_20": ema_20_5m
+                "cluster": st_cluster_5m
             })
 
             scored = engines.score_direction({
                 "price": spot_price,
-                "ema_20": ema_20_5m,
+                "cluster": st_cluster_5m,
                 "rsi": rsi_now,
                 "macd": macd,
+                "macd_variants": macd_variants,
+                "cvd_data": cvd_data,
                 "heikenColor": consec["color"],
                 "heikenCount": consec["count"],
                 "macd_5m": {
@@ -390,7 +437,6 @@ async def update_loop():
 
             # Temporary fix for UI values if indicators failed
             rsi_val = rsi_now
-            ema_val = ema_20_5m
 
             time_aware = engines.apply_time_awareness(scored["rawUp"], time_left_min, settings.CANDLE_WINDOW_MINUTES)
 
@@ -433,6 +479,7 @@ async def update_loop():
                     "balance": state["paper_balance"],
                     "active_trades": state["active_trades"],
                     "history_count": len(state["trade_history"]),
+                    "stink_bids": state["stink_bids"],
                     "risk": {"type": settings.RISK_TYPE, "value": settings.RISK_VALUE},
                     "symbol": settings.SYMBOL
                 },
@@ -445,14 +492,16 @@ async def update_loop():
                 },
                 "indicators": {
                     "rsi": rsi_val,
-                    "ema_20": ema_val,
+                    "st_cluster": st_cluster_5m,
                     "macd": macd,
                     "heiken": consec,
                     "macd_5m": {
                         "histColor": consec_hist_5m["direction"],
                         "histCount": consec_hist_5m["count"]
                     },
-                    "heiken_5m": consec_5m
+                    "macd_variants": macd_variants,
+                    "heiken_5m": consec_5m,
+                    "cvd": cvd_data
                 },
                 "analysis": {
                     "regime": regime_info, "probability": time_aware, "edge": edge, "decision": decision
@@ -520,7 +569,8 @@ async def get_settings():
             "symbol": settings.SYMBOL,
             "risk_type": settings.RISK_TYPE,
             "risk_value": settings.RISK_VALUE
-        }
+        },
+        "supertrend": settings.get_st_params()
     }
 
 @app.post("/api/settings")
@@ -556,6 +606,17 @@ async def post_settings(new_settings: Dict[str, Any]):
         settings.POLYMARKET_SERIES_ID = p.get("series_id", settings.POLYMARKET_SERIES_ID)
         settings.POLYMARKET_UP_LABEL = p.get("up_label", settings.POLYMARKET_UP_LABEL)
         settings.POLYMARKET_DOWN_LABEL = p.get("down_label", settings.POLYMARKET_DOWN_LABEL)
+
+    if "supertrend" in new_settings:
+        st = new_settings["supertrend"]
+        settings.ST_CONSENSUS_THRESHOLD = float(st.get("consensus_threshold", settings.ST_CONSENSUS_THRESHOLD))
+        settings.ST_BASE_INDEX = int(st.get("base_st_index", settings.ST_BASE_INDEX))
+        for i in range(1, 6):
+            settings.__setattr__(f"ST{i}_ATR_LEN", int(st.get(f"st{i}_atr_len", getattr(settings, f"ST{i}_ATR_LEN"))))
+            settings.__setattr__(f"ST{i}_FACTOR", float(st.get(f"st{i}_factor", getattr(settings, f"ST{i}_FACTOR"))))
+            settings.__setattr__(f"ST{i}_MA_TYPE", st.get(f"st{i}_ma_type", getattr(settings, f"ST{i}_MA_TYPE")))
+            settings.__setattr__(f"ST{i}_MA_LEN", int(st.get(f"st{i}_ma_len", getattr(settings, f"ST{i}_MA_LEN"))))
+            settings.__setattr__(f"ST{i}_WEIGHT", float(st.get(f"st{i}_weight", getattr(settings, f"ST{i}_WEIGHT"))))
 
     state["trading_mode"] = settings.MODE
     state["paper_balance"] = settings.PAPER_BALANCE_USD

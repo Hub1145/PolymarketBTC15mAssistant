@@ -12,6 +12,8 @@ class BinanceTradeStream:
         self.on_update = on_update
         self.last_price = None
         self.last_ts = None
+        self.cvd = 0.0
+        self.cvd_history = [] # List of (timestamp, cvd)
         self.closed = False
 
     async def start(self):
@@ -27,10 +29,25 @@ class BinanceTradeStream:
                             if msg.type == aiohttp.WSMsgType.TEXT:
                                 data = json.loads(msg.data)
                                 p = float(data.get("p"))
+                                q = float(data.get("q"))
+                                is_buyer_mm = data.get("m") # True = Sell, False = Buy
+
+                                delta = q if not is_buyer_mm else -q
+                                self.cvd += delta
                                 self.last_price = p
                                 self.last_ts = time.time()
+
+                                # Keep last 1000 points for history/divergence
+                                self.cvd_history.append((self.last_ts, self.cvd, self.last_price))
+                                if len(self.cvd_history) > 1000:
+                                    self.cvd_history.pop(0)
+
                                 if self.on_update:
-                                    await self.on_update({"price": self.last_price, "ts": self.last_ts})
+                                    await self.on_update({
+                                        "price": self.last_price,
+                                        "ts": self.last_ts,
+                                        "cvd": self.cvd
+                                    })
                             elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
                                 break
             except Exception as e:
@@ -39,7 +56,12 @@ class BinanceTradeStream:
                     await asyncio.sleep(2)
 
     def get_last(self):
-        return {"price": self.last_price, "ts": self.last_ts}
+        return {
+            "price": self.last_price,
+            "ts": self.last_ts,
+            "cvd": self.cvd,
+            "cvd_history": self.cvd_history
+        }
 
     def close(self):
         self.closed = True

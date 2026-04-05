@@ -1,8 +1,204 @@
 import pandas as pd
+import numpy as np
+import time
 from ta.momentum import RSIIndicator
 from ta.trend import MACD, EMAIndicator
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 from utils import clamp
+
+def sma(series: pd.Series, period: int) -> pd.Series:
+    return series.rolling(window=period).mean()
+
+def ema(series: pd.Series, period: int) -> pd.Series:
+    return series.ewm(span=period, adjust=False).mean()
+
+def wma(series: pd.Series, period: int) -> pd.Series:
+    weights = np.arange(1, period + 1)
+    return series.rolling(period).apply(lambda x: np.dot(x, weights) / weights.sum(), raw=True)
+
+def hma(series: pd.Series, period: int) -> pd.Series:
+    half_len = period // 2
+    sqrt_len = int(np.sqrt(period))
+    wma_half = wma(series, half_len)
+    wma_full = wma(series, period)
+    diff = 2 * wma_half - wma_full
+    return wma(diff, sqrt_len)
+
+def lsma(series: pd.Series, period: int) -> pd.Series:
+    def linreg(x):
+        n = len(x)
+        weights = np.arange(n)
+        slope, intercept = np.polyfit(weights, x, 1)
+        return slope * (n - 1) + intercept
+    return series.rolling(period).apply(linreg, raw=True)
+
+def rma(series: pd.Series, period: int) -> pd.Series:
+    return series.ewm(alpha=1.0/period, adjust=False).mean()
+
+def compute_ma(ma_type: str, series: pd.Series, period: int) -> pd.Series:
+    t = ma_type.upper()
+    if t == 'SMA': return sma(series, period)
+    if t == 'EMA': return ema(series, period)
+    if t == 'WMA': return wma(series, period)
+    if t == 'HMA': return hma(series, period)
+    if t == 'LSMA': return lsma(series, period)
+    if t == 'RMA': return rma(series, period)
+    return sma(series, period)
+
+def compute_atr(df: pd.DataFrame, period: int) -> pd.Series:
+    high = df['high']
+    low = df['low']
+    close = df['close']
+    tr1 = high - low
+    tr2 = (high - close.shift(1)).abs()
+    tr3 = (low - close.shift(1)).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    return rma(tr, period)
+
+def compute_supertrend_base(df: pd.DataFrame, src: pd.Series, atr_len: int, factor: float) -> tuple:
+    atr = compute_atr(df, atr_len)
+
+    upper_band_basic = src + factor * atr
+    lower_band_basic = src - factor * atr
+
+    upper_band_vals = upper_band_basic.values.copy()
+    lower_band_vals = lower_band_basic.values.copy()
+    src_vals = src.values
+
+    for i in range(1, len(src)):
+        if np.isnan(upper_band_vals[i-1]): continue
+
+        if upper_band_basic.values[i] < upper_band_vals[i-1] or src_vals[i-1] > upper_band_vals[i-1]:
+            upper_band_vals[i] = upper_band_basic.values[i]
+        else:
+            upper_band_vals[i] = upper_band_vals[i-1]
+
+        if lower_band_basic.values[i] > lower_band_vals[i-1] or src_vals[i-1] < lower_band_vals[i-1]:
+            lower_band_vals[i] = lower_band_basic.values[i]
+        else:
+            lower_band_vals[i] = lower_band_vals[i-1]
+
+    direction = np.ones(len(src))
+    for i in range(1, len(src)):
+        if direction[i-1] == -1 and src_vals[i] > upper_band_vals[i-1]:
+            direction[i] = 1
+        elif direction[i-1] == 1 and src_vals[i] < lower_band_vals[i-1]:
+            direction[i] = -1
+        else:
+            direction[i] = direction[i-1]
+
+    supertrend = np.where(direction == 1, lower_band_vals, upper_band_vals)
+    return supertrend, direction
+
+def compute_supertrend_cluster(df: pd.DataFrame, params: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Computes the SuperTrend Cluster regime following Zeiierman's Pine Script logic.
+    """
+    if df.empty or len(df) < 50: # Minimum candles for HMA/LSMA/ATR
+        return {"regime": 0, "strength": 0.0, "scBu": 0.5, "scBe": 0.5}
+
+    # Pine Script uses hlc3 as source
+    src = (df['high'] + df['low'] + df['close']) / 3
+
+    sts = []
+    directions = []
+
+    # Loop through 5 SuperTrend configurations
+    for i in range(1, 6):
+        ma_type = params.get(f'st{i}_ma_type', 'SMA')
+        ma_len = params.get(f'st{i}_ma_len', 10)
+        atr_len = params.get(f'st{i}_atr_len', 10)
+        factor = params.get(f'st{i}_factor', 3.0)
+
+        ma_src = compute_ma(ma_type, src, ma_len)
+        st_val, d_val = compute_supertrend_base(df, ma_src, atr_len, factor)
+        sts.append(st_val)
+        directions.append(d_val)
+
+    weights = [params.get(f'st{i}_weight', 1.0) for i in range(1, 6)]
+    w_sum = sum(weights)
+
+    thr = params.get('consensus_threshold', 0.6)
+    base_idx = params.get('base_st_index', 3) - 1 # 0-indexed
+
+    n_bars = len(src)
+    regimes = np.zeros(n_bars)
+    sc_bus = np.zeros(n_bars)
+    sc_bes = np.zeros(n_bars)
+
+    current_d_last = 0.0
+
+    for i in range(n_bars):
+        w_bu = 0.0
+        w_be = 0.0
+        for j in range(5):
+            d = directions[j][i]
+            w = weights[j]
+            if d > 0:
+                w_bu += w
+            elif d < 0:
+                w_be += w
+
+        sc_bu = w_bu / w_sum if w_sum > 0 else 0.5
+        sc_be = w_be / w_sum if w_sum > 0 else 0.5
+        sc_bus[i] = sc_bu
+        sc_bes[i] = sc_be
+
+        base_d = directions[base_idx][i]
+        is_bu = sc_bu >= thr
+        is_be = sc_be >= thr
+
+        ok_bu = is_bu and base_d > 0
+        ok_be = is_be and base_d < 0
+
+        if ok_bu and not ok_be:
+            current_d_last = 1.0
+        elif ok_be and not ok_bu:
+            current_d_last = -1.0
+
+        regimes[i] = current_d_last
+
+    return {
+        "regime": regimes[-1], # 1 Bull, -1 Bear, 0 Neutral
+        "strength": abs(sc_bus[-1] - sc_bes[-1]),
+        "scBu": sc_bus[-1],
+        "scBe": sc_bes[-1]
+    }
+
+def detect_cvd_divergence(cvd_history: List[tuple], period_seconds: int = 300) -> Dict[str, Any]:
+    """
+    Detects divergence between CVD and Price.
+    cvd_history is a list of (timestamp, cvd, price)
+    """
+    if len(cvd_history) < 2:
+        return {"divergence": "NONE", "cvd_slope": 0, "price_slope": 0}
+
+    now = time.time()
+    relevant = [x for x in cvd_history if now - x[0] <= period_seconds]
+    if len(relevant) < 10:
+        return {"divergence": "NONE", "cvd_slope": 0, "price_slope": 0}
+
+    # Calculate slopes via linear regression
+    ts = [x[0] - relevant[0][0] for x in relevant]
+    cvds = [x[1] for x in relevant]
+    prices = [x[2] for x in relevant]
+
+    cvd_slope, _ = np.polyfit(ts, cvds, 1)
+    price_slope, _ = np.polyfit(ts, prices, 1)
+
+    # Normalize slopes to compare direction
+    div = "NONE"
+    if price_slope > 0 and cvd_slope < 0:
+        div = "BEARISH" # Price rising, selling pressure aggressive
+    elif price_slope < 0 and cvd_slope > 0:
+        div = "BULLISH" # Price falling, buying pressure aggressive
+
+    return {
+        "divergence": div,
+        "cvd_slope": cvd_slope,
+        "price_slope": price_slope,
+        "cvd_delta": cvds[-1] - cvds[0]
+    }
 
 def compute_rsi(closes: List[float], period: int) -> Optional[float]:
     if not closes or len(closes) < period:

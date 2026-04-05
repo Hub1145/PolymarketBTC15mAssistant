@@ -2,25 +2,27 @@ from typing import Dict, Optional, Any
 from utils import clamp
 
 def detect_regime(inputs: Dict[str, Any]) -> Dict[str, str]:
-    price = inputs.get("price")
-    ema_20 = inputs.get("ema_20")
+    cluster = inputs.get("cluster")
+    if not cluster:
+        return {"regime": "CHOP", "reason": "missing_cluster"}
 
-    if price is None or ema_20 is None:
-        return {"regime": "CHOP", "reason": "missing_inputs"}
+    regime_val = cluster.get("regime", 0)
 
-    above = price > ema_20
-
-    if above:
-        return {"regime": "TREND_UP", "reason": "price_above_ema20"}
+    if regime_val == 1:
+        return {"regime": "TREND_UP", "reason": f"ST_Cluster_Bullish_{cluster.get('strength', 0):.2f}"}
+    elif regime_val == -1:
+        return {"regime": "TREND_DOWN", "reason": f"ST_Cluster_Bearish_{cluster.get('strength', 0):.2f}"}
     else:
-        return {"regime": "TREND_DOWN", "reason": "price_below_ema20"}
+        return {"regime": "CHOP", "reason": "ST_Cluster_Neutral"}
 
 def score_direction(inputs: Dict[str, Any]) -> Dict[str, float]:
     price = inputs.get("price")
-    ema_20 = inputs.get("ema_20")
+    cluster = inputs.get("cluster")
     rsi = inputs.get("rsi")
+    cvd_data = inputs.get("cvd_data") # {divergence: BULLISH|BEARISH|NONE, cvd_delta: float}
 
     macd_1m = inputs.get("macd")
+    macd_variants = inputs.get("macd_variants") # { '3_15_3': {histDelta: float}, ... }
     ha_1m_color = inputs.get("heikenColor")
     ha_1m_count = inputs.get("heikenCount")
 
@@ -29,13 +31,21 @@ def score_direction(inputs: Dict[str, Any]) -> Dict[str, float]:
     macd_5m_hist_count = macd_5m.get("histCount") if macd_5m else 0
 
     ha_5m_color = inputs.get("heiken_5m_color")
-    ha_5m_count = inputs.get("heiken_5m_count")
+    ha_5m_count = inputs.get("heiken_5m_count") or 0
 
     up = 1.0
     down = 1.0
 
-    # Trend detection (20-period EMA on 5m)
-    uptrend = price > ema_20 if (price is not None and ema_20 is not None) else None
+    # Trend detection (SuperTrend Cluster on 5m)
+    cluster_regime = cluster.get("regime", 0) if cluster else 0
+    cluster_strength = cluster.get("strength", 0) if cluster else 0
+    uptrend = True if cluster_regime == 1 else False if cluster_regime == -1 else None
+
+    # Trend Strength weighting
+    if cluster_regime == 1:
+        up += 20 * cluster_strength
+    elif cluster_regime == -1:
+        down += 20 * cluster_strength
 
     # RSI protections
     is_overbought = rsi is not None and rsi > 70
@@ -59,34 +69,71 @@ def score_direction(inputs: Dict[str, Any]) -> Dict[str, float]:
             down = 0.5 # Suppress sell
 
     # 2. 5m Heiken Ashi Momentum and Exhaustion
-    ha_5m_exhausted = ha_5m_count >= 6
+    ha_5m_exhausted = ha_5m_count >= 5 # Lower threshold
     if ha_5m_color == "green":
-        if 1 <= ha_5m_count <= 5:
-            up += 4
+        if 1 <= ha_5m_count <= 2:
+            up += 25 # VERY strong early momentum
+        elif 3 <= ha_5m_count <= 4:
+            up += 10
         elif ha_5m_exhausted:
-            up = 0.5 # Suppress buy
+            up = 0.1 # Stronger suppression
     elif ha_5m_color == "red":
-        if 1 <= ha_5m_count <= 5:
-            down += 4
+        if 1 <= ha_5m_count <= 2:
+            down += 25
+        elif 3 <= ha_5m_count <= 4:
+            down += 10
         elif ha_5m_exhausted:
-            down = 0.5 # Suppress sell
+            down = 0.1
 
     # 3. New Momentum Detection
     # If MACD exhausted, new HA start forming => sign of new momentum
     if macd_5m_exhausted and ha_5m_color and ha_5m_count <= 2:
         if ha_5m_color == "green" and uptrend:
-            up += 10 # Strong signal
+            up += 20 # Stronger signal
         elif ha_5m_color == "red" and not uptrend:
-            down += 10 # Strong signal
+            down += 20 # Stronger signal
 
     # If HA exhausted, new MACD histogram start => signal
     if ha_5m_exhausted and macd_5m_hist_color and macd_5m_hist_count <= 2:
         if macd_5m_hist_color == "green" and uptrend:
-            up += 10
+            up += 20
         elif macd_5m_hist_color == "red" and not uptrend:
-            down += 10
+            down += 20
 
-    # 4. Global Filters
+    # 4. CVD Aggression and Divergence
+    if cvd_data:
+        div = cvd_data.get("divergence", "NONE")
+        cvd_delta = cvd_data.get("cvd_delta", 0)
+
+        # Divergence is high-alpha signal
+        if div == "BULLISH":
+            up += 30 # Increased weight
+        elif div == "BEARISH":
+            down += 30 # Increased weight
+
+        # Trend following aggression
+        if cvd_delta > 0:
+            up += 5
+        elif cvd_delta < 0:
+            down += 5
+
+    # 5. Backtested MACD Alpha Variants
+    if macd_variants:
+        for name, data in macd_variants.items():
+            delta = data.get("histDelta")
+            hist = data.get("hist")
+            if delta is not None and hist is not None:
+                # High conviction if hist and delta align
+                if delta > 0 and hist > 0:
+                    up += 10
+                elif delta < 0 and hist < 0:
+                    down += 10
+                elif delta > 0:
+                    up += 5
+                elif delta < 0:
+                    down += 5
+
+    # 6. Global Filters
     if is_overbought: up = 0.1
     if is_oversold: down = 0.1
 

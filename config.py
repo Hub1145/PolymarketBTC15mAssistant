@@ -29,6 +29,51 @@ class Settings(BaseSettings):
     MACD_SLOW: int = 26
     MACD_SIGNAL: int = 9
 
+    # SuperTrend Cluster Parameters
+    ST_CONSENSUS_THRESHOLD: float = 0.60
+    ST_BASE_INDEX: int = 3
+
+    ST1_ATR_LEN: int = 7
+    ST1_FACTOR: float = 1.5
+    ST1_MA_TYPE: str = "EMA"
+    ST1_MA_LEN: int = 3
+    ST1_WEIGHT: float = 1.0
+
+    ST2_ATR_LEN: int = 10
+    ST2_FACTOR: float = 2.0
+    ST2_MA_TYPE: str = "EMA"
+    ST2_MA_LEN: int = 5
+    ST2_WEIGHT: float = 1.0
+
+    ST3_ATR_LEN: int = 14
+    ST3_FACTOR: float = 2.5
+    ST3_MA_TYPE: str = "SMA"
+    ST3_MA_LEN: int = 8
+    ST3_WEIGHT: float = 1.2
+
+    ST4_ATR_LEN: int = 21
+    ST4_FACTOR: float = 3.0
+    ST4_MA_TYPE: str = "WMA"
+    ST4_MA_LEN: int = 13
+    ST4_WEIGHT: float = 1.4
+
+    ST5_ATR_LEN: int = 34
+    ST5_FACTOR: float = 4.0
+    ST5_MA_TYPE: str = "HMA"
+    ST5_MA_LEN: int = 21
+    ST5_WEIGHT: float = 1.6
+
+    def get_st_params(self) -> Dict[str, Any]:
+        return {
+            "consensus_threshold": self.ST_CONSENSUS_THRESHOLD,
+            "base_st_index": self.ST_BASE_INDEX,
+            "st1_atr_len": self.ST1_ATR_LEN, "st1_factor": self.ST1_FACTOR, "st1_ma_type": self.ST1_MA_TYPE, "st1_ma_len": self.ST1_MA_LEN, "st1_weight": self.ST1_WEIGHT,
+            "st2_atr_len": self.ST2_ATR_LEN, "st2_factor": self.ST2_FACTOR, "st2_ma_type": self.ST2_MA_TYPE, "st2_ma_len": self.ST2_MA_LEN, "st2_weight": self.ST2_WEIGHT,
+            "st3_atr_len": self.ST3_ATR_LEN, "st3_factor": self.ST3_FACTOR, "st3_ma_type": self.ST3_MA_TYPE, "st3_ma_len": self.ST3_MA_LEN, "st3_weight": self.ST3_WEIGHT,
+            "st4_atr_len": self.ST4_ATR_LEN, "st4_factor": self.ST4_FACTOR, "st4_ma_type": self.ST4_MA_TYPE, "st4_ma_len": self.ST4_MA_LEN, "st4_weight": self.ST4_WEIGHT,
+            "st5_atr_len": self.ST5_ATR_LEN, "st5_factor": self.ST5_FACTOR, "st5_ma_type": self.ST5_MA_TYPE, "st5_ma_len": self.ST5_MA_LEN, "st5_weight": self.ST5_WEIGHT,
+        }
+
     # Polymarket
     POLYMARKET_SLUG: str = os.getenv("POLYMARKET_SLUG", "")
     POLYMARKET_SERIES_ID: str = os.getenv("POLYMARKET_SERIES_ID", "10192")
