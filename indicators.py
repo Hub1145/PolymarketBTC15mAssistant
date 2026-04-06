@@ -2,19 +2,20 @@ import pandas as pd
 import numpy as np
 import time
 from ta.momentum import RSIIndicator
-from ta.trend import MACD, EMAIndicator
+from ta.trend import MACD, EMAIndicator, SMAIndicator, WMAIndicator
+from ta.volatility import AverageTrueRange
 from typing import List, Optional, Dict, Any
 from utils import clamp
+from typing import Dict, Any, List, Optional
 
 def sma(series: pd.Series, period: int) -> pd.Series:
-    return series.rolling(window=period).mean()
+    return SMAIndicator(close=series, window=period).sma_indicator()
 
 def ema(series: pd.Series, period: int) -> pd.Series:
-    return series.ewm(span=period, adjust=False).mean()
+    return EMAIndicator(close=series, window=period).ema_indicator()
 
 def wma(series: pd.Series, period: int) -> pd.Series:
-    weights = np.arange(1, period + 1)
-    return series.rolling(period).apply(lambda x: np.dot(x, weights) / weights.sum(), raw=True)
+    return WMAIndicator(close=series, window=period).wma()
 
 def hma(series: pd.Series, period: int) -> pd.Series:
     half_len = period // 2
@@ -46,14 +47,7 @@ def compute_ma(ma_type: str, series: pd.Series, period: int) -> pd.Series:
     return sma(series, period)
 
 def compute_atr(df: pd.DataFrame, period: int) -> pd.Series:
-    high = df['high']
-    low = df['low']
-    close = df['close']
-    tr1 = high - low
-    tr2 = (high - close.shift(1)).abs()
-    tr3 = (low - close.shift(1)).abs()
-    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-    return rma(tr, period)
+    return AverageTrueRange(high=df['high'], low=df['low'], close=df['close'], window=period).average_true_range()
 
 def compute_supertrend_base(df: pd.DataFrame, src: pd.Series, atr_len: int, factor: float) -> tuple:
     atr = compute_atr(df, atr_len)
@@ -95,7 +89,7 @@ def compute_supertrend_cluster(df: pd.DataFrame, params: Dict[str, Any]) -> Dict
     Computes the SuperTrend Cluster regime following Zeiierman's Pine Script logic.
     """
     if df.empty or len(df) < 50: # Minimum candles for HMA/LSMA/ATR
-        return {"regime": 0, "strength": 0.0, "scBu": 0.5, "scBe": 0.5}
+        return {"regime": None, "strength": None, "scBu": None, "scBe": None}
 
     # Pine Script uses hlc3 as source
     src = (df['high'] + df['low'] + df['close']) / 3
@@ -295,8 +289,8 @@ def compute_heiken_ashi(candles: List[Dict]) -> List[Dict]:
     return ha
 
 def count_consecutive(ha_candles: List[Dict]) -> Dict:
-    if not ha_candles:
-        return {"color": None, "count": 0}
+    if not ha_candles or len(ha_candles) < 2:
+        return {"color": None, "count": None}
 
     last = ha_candles[-1]
     target = "green" if last["isGreen"] else "red"
@@ -312,11 +306,11 @@ def count_consecutive(ha_candles: List[Dict]) -> Dict:
     return {"color": target, "count": count}
 
 def count_consecutive_hist(hist_series: List[float]) -> Dict:
-    if not hist_series:
-        return {"direction": None, "count": 0}
+    if not hist_series or len(hist_series) < 2:
+        return {"direction": None, "count": None}
 
     last = hist_series[-1]
-    if last is None or pd.isna(last): return {"direction": None, "count": 0}
+    if last is None or pd.isna(last): return {"direction": None, "count": None}
 
     target = "up" if last > 0 else "down"
 

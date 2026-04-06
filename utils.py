@@ -1,12 +1,12 @@
 import csv
 import os
-from typing import List, Any
+from typing import List, Any, Optional
 
 import math
 
-def clamp(x: float, min_val: float, max_val: float) -> float:
+def clamp(x: float, min_val: float, max_val: float) -> Optional[float]:
     if x is None or math.isnan(x):
-        return (min_val + max_val) / 2
+        return None
     return max(min_val, min(max_val, x))
 
 def ensure_dir(dir_path: str):

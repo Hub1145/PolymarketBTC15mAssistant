@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -16,7 +17,34 @@ import indicators
 import engines
 import utils
 
-app = FastAPI(title="Polymarket BTC 15m Assistant")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Initial seeding
+    await seed_kline_buffers()
+
+    # Start all background tasks
+    tasks = [
+        asyncio.create_task(binance_stream.start()),
+        asyncio.create_task(binance_kline_1m.start()),
+        asyncio.create_task(binance_kline_5m.start()),
+        asyncio.create_task(polymarket_ws_stream.start()),
+        asyncio.create_task(chainlink_ws_stream.start()),
+        asyncio.create_task(update_loop())
+    ]
+
+    yield
+
+    # Shutdown cleanup
+    for task in tasks:
+        task.cancel()
+
+    binance_stream.close()
+    binance_kline_1m.close()
+    binance_kline_5m.close()
+    polymarket_ws_stream.close()
+    chainlink_ws_stream.close()
+
+app = FastAPI(title="Polymarket BTC 15m Assistant", lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")
 
 # Global state to store the latest data
@@ -514,18 +542,6 @@ async def update_loop():
 
         await asyncio.sleep(settings.POLL_INTERVAL_MS / 1000)
 
-@app.on_event("startup")
-async def startup_event():
-    # Initial seeding
-    await seed_kline_buffers()
-
-    # Start all background tasks
-    asyncio.create_task(binance_stream.start())
-    asyncio.create_task(binance_kline_1m.start())
-    asyncio.create_task(binance_kline_5m.start())
-    asyncio.create_task(polymarket_ws_stream.start())
-    asyncio.create_task(chainlink_ws_stream.start())
-    asyncio.create_task(update_loop())
 
 @app.get("/", response_class=HTMLResponse)
 async def get_dashboard(request: Request):

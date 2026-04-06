@@ -52,8 +52,8 @@ def score_direction(inputs: Dict[str, Any]) -> Dict[str, float]:
     is_oversold = rsi is not None and rsi < 30
 
     # Handle missing essential inputs
-    if price is None:
-        return {"upScore": 0, "downScore": 0, "rawUp": 0.5, "uptrend": uptrend}
+    if price is None or cluster is None:
+        return {"upScore": None, "downScore": None, "rawUp": None, "uptrend": uptrend}
 
     # 1. 5m MACD Momentum and Exhaustion
     macd_5m_exhausted = macd_5m_hist_count >= 6
@@ -141,22 +141,30 @@ def score_direction(inputs: Dict[str, Any]) -> Dict[str, float]:
     if uptrend is True: down = min(down, 1.0)
 
     import math
-    def safe_score(v):
-        if v is None or (isinstance(v, float) and math.isnan(v)): return 0.5
-        return v
+    def is_invalid(v):
+        return v is None or (isinstance(v, float) and math.isnan(v))
 
-    up = safe_score(up)
-    down = safe_score(down)
+    if is_invalid(up) or is_invalid(down):
+        return {"upScore": None, "downScore": None, "rawUp": None, "uptrend": uptrend}
 
-    raw_up = up / (up + down) if (up + down) > 0 else 0.5
-    if math.isnan(raw_up): raw_up = 0.5
+    raw_up = up / (up + down) if (up + down) > 0 else None
 
     return {"upScore": up, "downScore": down, "rawUp": raw_up, "uptrend": uptrend}
 
-def apply_time_awareness(raw_up: float, remaining_minutes: float, window_minutes: float) -> Dict[str, float]:
+def apply_time_awareness(raw_up: Optional[float], remaining_minutes: float, window_minutes: float) -> Dict[str, Optional[float]]:
     time_decay = clamp(remaining_minutes / window_minutes, 0, 1)
-    adjusted_up = clamp(0.5 + (raw_up - 0.5) * time_decay, 0, 1)
-    return {"timeDecay": time_decay, "adjustedUp": adjusted_up, "adjustedDown": 1 - adjusted_up}
+
+    if raw_up is None or time_decay is None:
+        return {"timeDecay": time_decay, "adjustedUp": None, "adjustedDown": None}
+
+    adj = 0.5 + (raw_up - 0.5) * time_decay
+    adjusted_up = clamp(adj, 0, 1)
+
+    return {
+        "timeDecay": time_decay,
+        "adjustedUp": adjusted_up,
+        "adjustedDown": (1 - adjusted_up) if adjusted_up is not None else None
+    }
 
 def compute_edge(inputs: Dict[str, Any]) -> Dict[str, Optional[float]]:
     model_up = inputs.get("modelUp")
@@ -171,8 +179,8 @@ def compute_edge(inputs: Dict[str, Any]) -> Dict[str, Optional[float]]:
     market_up = market_yes / total_market if total_market > 0 else None
     market_down = market_no / total_market if total_market > 0 else None
 
-    edge_up = model_up - market_up if market_up is not None else None
-    edge_down = model_down - market_down if market_down is not None else None
+    edge_up = model_up - market_up if (model_up is not None and market_up is not None) else None
+    edge_down = model_down - market_down if (model_down is not None and market_down is not None) else None
 
     return {
         "marketUp": clamp(market_up, 0, 1) if market_up is not None else None,
