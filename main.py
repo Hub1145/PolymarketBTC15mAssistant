@@ -316,6 +316,11 @@ async def update_loop():
             timing = get_candle_window_timing(settings.CANDLE_WINDOW_MINUTES)
 
             binance_ws = binance_stream.get_last()
+            if not binance_ws.get("price"):
+                # Fallback to PolWS or ClWS if trade stream is empty
+                poly_ws_last = polymarket_ws_stream.get_last()
+                cl_ws_last = chainlink_ws_stream.get_last()
+                binance_ws["price"] = poly_ws_last.get("price") or cl_ws_last.get("price")
             poly_ws = polymarket_ws_stream.get_last()
             cl_ws = chainlink_ws_stream.get_last()
 
@@ -346,17 +351,17 @@ async def update_loop():
             # Find the 15m open price (open of the first 5m candle in this 15m window)
             target_open = spot_price
             if klines_5m:
-                # Find candle with open_time <= startMs
+                # Find candle with openTime <= startMs
                 start_ms = timing["startMs"]
                 for c in reversed(klines_5m):
-                    if c["open_time"] <= start_ms:
+                    if c["openTime"] <= start_ms:
                         target_open = c["open"]
                         break
 
             mc_data = indicators.monte_carlo_predict(
                 klines_5m,
-                current_price=spot_price,
-                target_open_price=target_open,
+                current_price=spot_price if spot_price else 0,
+                target_open_price=target_open if target_open else 0,
                 steps=mc_steps,
                 sims=1000
             )

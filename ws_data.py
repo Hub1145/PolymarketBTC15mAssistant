@@ -18,6 +18,8 @@ class BinanceTradeStream:
 
     async def start(self):
         url = f"wss://stream.binance.com:9443/ws/{self.symbol}@trade"
+        kraken_ws_url = "wss://ws.kraken.com"
+
         while not self.closed:
             try:
                 proxy = get_proxy_url_for(url)
@@ -31,29 +33,66 @@ class BinanceTradeStream:
                                 p = float(data.get("p"))
                                 q = float(data.get("q"))
                                 is_buyer_mm = data.get("m") # True = Sell, False = Buy
-
-                                delta = q if not is_buyer_mm else -q
-                                self.cvd += delta
-                                self.last_price = p
-                                self.last_ts = time.time()
-
-                                # Keep last 1000 points for history/divergence
-                                self.cvd_history.append((self.last_ts, self.cvd, self.last_price))
-                                if len(self.cvd_history) > 1000:
-                                    self.cvd_history.pop(0)
-
-                                if self.on_update:
-                                    await self.on_update({
-                                        "price": self.last_price,
-                                        "ts": self.last_ts,
-                                        "cvd": self.cvd
-                                    })
+                                self._process_trade(p, q, is_buyer_mm)
                             elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
                                 break
             except Exception as e:
-                print(f"WS Error (Binance): {e}")
+                print(f"Binance trade WS failed, trying Kraken: {e}")
                 if not self.closed:
-                    await asyncio.sleep(2)
+                    try:
+                        await self._start_kraken_trades(kraken_ws_url)
+                    except Exception as ke:
+                        print(f"Kraken trade WS failed: {ke}")
+                        await asyncio.sleep(2)
+
+    async def _start_kraken_trades(self, url: str):
+        k_symbol = "BTC/USDT" if "USDT" in self.symbol.upper() else "BTC/USD"
+        async with aiohttp.ClientSession() as session:
+            async with session.ws_connect(url) as ws:
+                subscribe_msg = {
+                    "event": "subscribe",
+                    "pair": [k_symbol],
+                    "subscription": {"name": "trade"}
+                }
+                await ws.send_json(subscribe_msg)
+                print(f"Connected to Kraken Trade WS: {k_symbol}")
+
+                while not self.closed:
+                    msg = await ws.receive()
+                    if msg.type == aiohttp.WSMsgType.TEXT:
+                        data = json.loads(msg.data)
+                        if isinstance(data, list):
+                            # Kraken trade format: [channelID, [[price, volume, time, side, orderType, misc], ...], "trade", pair]
+                            trades = data[1]
+                            for t in trades:
+                                p = float(t[0])
+                                q = float(t[1])
+                                side = t[3] # 'b' or 's'
+                                # in Binance: m=True means side='s'
+                                is_buyer_mm = (side == 's')
+                                self._process_trade(p, q, is_buyer_mm)
+                        elif isinstance(data, dict) and data.get("event") == "heartbeat":
+                            continue
+                    elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
+                        break
+
+    def _process_trade(self, p: float, q: float, is_buyer_mm: bool):
+        delta = q if not is_buyer_mm else -q
+        self.cvd += delta
+        self.last_price = p
+        self.last_ts = time.time()
+
+        # Keep last 1000 points for history/divergence
+        self.cvd_history.append((self.last_ts, self.cvd, self.last_price))
+        if len(self.cvd_history) > 1000:
+            self.cvd_history.pop(0)
+
+        if self.on_update:
+            asyncio.create_task(self.on_update({
+                "price": self.last_price,
+                "ts": self.last_ts,
+                "cvd": self.cvd
+            }))
 
     def get_last(self):
         return {
@@ -76,6 +115,8 @@ class BinanceKlineStream:
 
     async def start(self):
         url = f"wss://stream.binance.com:9443/ws/{self.symbol}@kline_{self.interval}"
+        kraken_ws_url = "wss://ws.kraken.com"
+
         while not self.closed:
             try:
                 proxy = get_proxy_url_for(url)
@@ -97,26 +138,67 @@ class BinanceKlineStream:
                                     "closeTime": int(k.get("T")),
                                     "isClosed": k.get("x")
                                 }
-
-                                if not self.candles:
-                                    self.candles.append(candle)
-                                else:
-                                    # Update current candle or append new one
-                                    if candle["openTime"] == self.candles[-1]["openTime"]:
-                                        self.candles[-1] = candle
-                                    else:
-                                        self.candles.append(candle)
-
-                                # Maintain limit
-                                if len(self.candles) > self.limit:
-                                    self.candles.pop(0)
-
+                                self._update_candle(candle)
                             elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
                                 break
             except Exception as e:
-                print(f"WS Error (Binance Kline {self.interval}): {e}")
+                print(f"Binance Kline WS failed, trying Kraken: {e}")
                 if not self.closed:
-                    await asyncio.sleep(2)
+                    try:
+                        await self._start_kraken_ws(kraken_ws_url)
+                    except Exception as ke:
+                        print(f"Kraken Kline WS failed: {ke}")
+                        await asyncio.sleep(5)
+
+    async def _start_kraken_ws(self, url: str):
+        k_symbol = "BTC/USDT" if "USDT" in self.symbol.upper() else "BTC/USD"
+        k_interval = 1
+        if self.interval == "5m": k_interval = 5
+        elif self.interval == "15m": k_interval = 15
+
+        async with aiohttp.ClientSession() as session:
+            async with session.ws_connect(url) as ws:
+                subscribe_msg = {
+                    "event": "subscribe",
+                    "pair": [k_symbol],
+                    "subscription": {"name": "ohlc", "interval": k_interval}
+                }
+                await ws.send_json(subscribe_msg)
+                print(f"Connected to Kraken OHLC WS: {k_symbol} {k_interval}")
+
+                while not self.closed:
+                    msg = await ws.receive()
+                    if msg.type == aiohttp.WSMsgType.TEXT:
+                        data = json.loads(msg.data)
+                        if isinstance(data, list):
+                            # Kraken OHLC format: [channelID, [time, etime, open, high, low, close, vwap, volume, count], pair]
+                            ohlc = data[1]
+                            candle = {
+                                "openTime": int(float(ohlc[0]) * 1000),
+                                "open": float(ohlc[2]),
+                                "high": float(ohlc[3]),
+                                "low": float(ohlc[4]),
+                                "close": float(ohlc[5]),
+                                "volume": float(ohlc[7]),
+                                "closeTime": int(float(ohlc[1]) * 1000) - 1,
+                                "isClosed": False # Kraken doesn't send explicit isClosed for real-time
+                            }
+                            self._update_candle(candle)
+                        elif isinstance(data, dict) and data.get("event") == "heartbeat":
+                            continue
+                    elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
+                        break
+
+    def _update_candle(self, candle: Dict):
+        if not self.candles:
+            self.candles.append(candle)
+        else:
+            if candle["openTime"] == self.candles[-1]["openTime"]:
+                self.candles[-1] = candle
+            else:
+                self.candles.append(candle)
+        if len(self.candles) > self.limit:
+            self.candles.pop(0)
 
     def set_candles(self, candles: List[Dict]):
         self.candles = candles[-self.limit:]
