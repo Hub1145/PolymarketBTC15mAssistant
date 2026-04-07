@@ -55,7 +55,6 @@ state = {
     "trading_mode": settings.MODE,
     "paper_balance": settings.PAPER_BALANCE_USD,
     "active_trades": [],
-    "stink_bids": [], # Active limit orders
     "trade_history": [],
     "logs": []
 }
@@ -179,54 +178,7 @@ async def fetch_polymarket_snapshot() -> Dict[str, Any]:
     }
 
 async def execute_trade(decision: Dict[str, Any], market_prices: Dict[str, Any], market: Dict[str, Any]):
-    # 1. Handle Stink Bids (Limit orders at 30% discount)
-    current_up = market_prices.get("up")
-    current_down = market_prices.get("down")
-
-    if current_up and current_down:
-        # Check if we should place new stink bids (limit 2 per side)
-        if len(state["stink_bids"]) < 4:
-            target_up = current_up * 0.7
-            target_down = current_down * 0.7
-
-            # Simulated placement
-            bid_up = {"side": "UP", "price": target_up, "market_id": market["id"], "market_slug": market.get("slug"), "ts": time.time()}
-            bid_down = {"side": "DOWN", "price": target_down, "market_id": market["id"], "market_slug": market.get("slug"), "ts": time.time()}
-
-            # Check if already exists for this market/side
-            if not any(b["side"] == "UP" and b["market_id"] == market["id"] for b in state["stink_bids"]):
-                state["stink_bids"].append(bid_up)
-                log_message(f"Placed STINK BID: UP @ {target_up:.2f} (30% discount) for {market.get('slug')}")
-
-            if not any(b["side"] == "DOWN" and b["market_id"] == market["id"] for b in state["stink_bids"]):
-                state["stink_bids"].append(bid_down)
-                log_message(f"Placed STINK BID: DOWN @ {target_down:.2f} (30% discount) for {market.get('slug')}")
-
-    # Process Stink Bid fills (if bid price >= current ask/price, fill)
-    for bid in state["stink_bids"][:]:
-        market_price = current_up if bid["side"] == "UP" else current_down
-        if market_price and market_price <= bid["price"]:
-            log_message(f"STINK BID FILLED: {bid['side']} @ {bid['price']:.2f} for {bid['market_slug']}")
-            # Convert to trade
-            trade = {
-                "market_id": bid["market_id"],
-                "market_slug": bid["market_slug"],
-                "side": bid["side"],
-                "entry_price": bid["price"],
-                "amount": settings.RISK_VALUE, # Simple fixed amount for stink bids
-                "shares": settings.RISK_VALUE / bid["price"],
-                "entry_time": datetime.now().isoformat(),
-                "status": "OPEN_STINK",
-                "profit_loss": None
-            }
-            state["paper_balance"] -= trade["amount"]
-            state["active_trades"].append(trade)
-            state["stink_bids"].remove(bid)
-
-            # Immediate inverse hedge
-            log_message(f"Simulated Arb: Opened inverse hedge on Hyperliquid due to Stink Bid fill.")
-
-    # 2. Regular entry from decision engine
+    # Regular entry from decision engine
     if decision["action"] != "ENTER":
         return
 
@@ -387,6 +339,28 @@ async def update_loop():
             # CVD Divergence Calculation
             cvd_data = indicators.detect_cvd_divergence(binance_ws.get("cvd_history", []))
 
+            # Monte Carlo Simulation (Predictive Candle Close)
+            # steps = remaining 5m periods in the 15m window
+            mc_steps = max(1, int(pd.Series(timing["remainingMinutes"]).apply(lambda x: __import__('math').ceil(x / 5)).iloc[0]))
+
+            # Find the 15m open price (open of the first 5m candle in this 15m window)
+            target_open = spot_price
+            if klines_5m:
+                # Find candle with open_time <= startMs
+                start_ms = timing["startMs"]
+                for c in reversed(klines_5m):
+                    if c["open_time"] <= start_ms:
+                        target_open = c["open"]
+                        break
+
+            mc_data = indicators.monte_carlo_predict(
+                klines_5m,
+                current_price=spot_price,
+                target_open_price=target_open,
+                steps=mc_steps,
+                sims=1000
+            )
+
             # Polymarket Chainlink Price Logic with explicit source tracking
             current_price = None
             price_source = None
@@ -454,6 +428,7 @@ async def update_loop():
                 "macd": macd,
                 "macd_variants": macd_variants,
                 "cvd_data": cvd_data,
+                "mc_data": mc_data,
                 "heikenColor": consec["color"],
                 "heikenCount": consec["count"],
                 "macd_5m": {
@@ -508,7 +483,6 @@ async def update_loop():
                     "balance": state["paper_balance"],
                     "active_trades": state["active_trades"],
                     "history_count": len(state["trade_history"]),
-                    "stink_bids": state["stink_bids"],
                     "risk": {"type": settings.RISK_TYPE, "value": settings.RISK_VALUE},
                     "symbol": settings.SYMBOL
                 },
@@ -530,7 +504,8 @@ async def update_loop():
                     },
                     "macd_variants": macd_variants,
                     "heiken_5m": consec_5m,
-                    "cvd": cvd_data
+                    "cvd": cvd_data,
+                    "monte_carlo": mc_data
                 },
                 "analysis": {
                     "regime": regime_info, "probability": time_aware, "edge": edge, "decision": decision

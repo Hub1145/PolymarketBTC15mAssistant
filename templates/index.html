@@ -141,6 +141,11 @@
                               x-text="data.indicators?.cvd?.divergence || 'NONE'"></span>
                     </div>
                     <div class="flex justify-between text-sm sm:text-base">
+                        <span class="text-gray-400">Monte Carlo (15m Close)</span>
+                        <span :class="data.indicators?.monte_carlo?.bias === 'BULLISH' ? 'text-green-400' : (data.indicators?.monte_carlo?.bias === 'BEARISH' ? 'text-red-400' : 'text-gray-400')"
+                              x-text="data.indicators?.monte_carlo?.prob_up != null ? ((data.indicators.monte_carlo.prob_up * 100).toFixed(1) + '% UP') : 'NaN'"></span>
+                    </div>
+                    <div class="flex justify-between text-sm sm:text-base">
                         <span class="text-gray-400">Market Regime</span>
                         <span class="font-bold text-blue-400" x-text="data.analysis?.regime?.regime || '-'"></span>
                     </div>
@@ -171,7 +176,6 @@
         <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden mb-8">
             <div class="flex bg-gray-700 overflow-x-auto">
                 <button @click="tab = 'active'" :class="tab === 'active' ? 'bg-gray-800 text-blue-400' : 'text-gray-400 hover:text-white'" class="px-4 sm:px-6 py-3 font-bold uppercase text-[10px] sm:text-sm transition flex-shrink-0">Active Trades</button>
-                <button @click="tab = 'stink'" :class="tab === 'stink' ? 'bg-gray-800 text-blue-400' : 'text-gray-400 hover:text-white'" class="px-4 sm:px-6 py-3 font-bold uppercase text-[10px] sm:text-sm transition flex-shrink-0">Stink Bids</button>
                 <button @click="tab = 'history'" :class="tab === 'history' ? 'bg-gray-800 text-blue-400' : 'text-gray-400 hover:text-white'" class="px-4 sm:px-6 py-3 font-bold uppercase text-[10px] sm:text-sm transition flex-shrink-0">Closed Trades</button>
                 <button @click="tab = 'logs'" :class="tab === 'logs' ? 'bg-gray-800 text-blue-400' : 'text-gray-400 hover:text-white'" class="px-4 sm:px-6 py-3 font-bold uppercase text-[10px] sm:text-sm transition flex-shrink-0">Console Log</button>
             </div>
@@ -212,35 +216,6 @@
                     </div>
                 </div>
 
-                <!-- Stink Bids -->
-                <div x-show="tab === 'stink'">
-                    <h3 class="text-lg sm:text-xl font-bold mb-4">Active Stink Bids (30% Discount)</h3>
-                    <div class="overflow-x-auto -mx-4 sm:mx-0">
-                        <table class="w-full text-left min-w-[500px] sm:min-w-0">
-                            <thead>
-                                <tr class="text-gray-500 text-xs uppercase tracking-wider">
-                                    <th class="px-4 py-2">Market</th>
-                                    <th class="px-4 py-2">Side</th>
-                                    <th class="px-4 py-2">Bid Price</th>
-                                    <th class="px-4 py-2 text-right">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody class="text-[11px] sm:text-sm">
-                                <template x-for="bid in data.trading_state?.stink_bids" :key="bid.ts">
-                                    <tr class="border-t border-gray-700">
-                                        <td class="px-4 py-3" x-text="bid.market_slug"></td>
-                                        <td class="px-4 py-3 font-bold" :class="bid.side === 'UP' ? 'text-green-400' : 'text-red-400'" x-text="bid.side"></td>
-                                        <td class="px-4 py-3 font-mono" x-text="(bid.price * 100).toFixed(1) + '¢'"></td>
-                                        <td class="px-4 py-3 text-right text-gray-500">PENDING FILL</td>
-                                    </tr>
-                                </template>
-                                <tr x-show="!data.trading_state?.stink_bids?.length">
-                                    <td colspan="4" class="py-6 text-center text-gray-600 italic text-xs">No active stink bids.</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
 
                 <!-- Closed Trades -->
                 <div x-show="tab === 'history'">

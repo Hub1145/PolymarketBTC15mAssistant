@@ -324,3 +324,66 @@ def count_consecutive_hist(hist_series: List[float]) -> Dict:
         count += 1
 
     return {"direction": target, "count": count}
+
+def monte_carlo_predict(candles_5m: List[Dict], current_price: float, target_open_price: float, steps: int = 1, sims: int = 1000, lookback: int = 500) -> Dict[str, Any]:
+    """
+    Monte Carlo Future Moves based on ChartPrime logic.
+    Predicts if the 15m candle will close above or below its 15m OPEN price.
+    Uses 5m candles to build the distribution of returns.
+    """
+    if len(candles_5m) < 20 or current_price <= 0 or target_open_price <= 0:
+        return {"prob_up": 0.5, "prob_down": 0.5, "bias": "NEUTRAL", "steps": steps}
+
+    # Calculate 5m returns (log returns)
+    hist_candles = candles_5m[-lookback:]
+    rets = []
+    for i in range(1, len(hist_candles)):
+        prev_cl = hist_candles[i-1]['close']
+        curr_cl = hist_candles[i]['close']
+        if prev_cl > 0 and curr_cl > 0:
+            rets.append(np.log(curr_cl / prev_cl))
+
+    if not rets:
+        return {"prob_up": 0.5, "prob_down": 0.5, "bias": "NEUTRAL", "steps": steps}
+
+    rets = np.array(rets)
+
+    # Standard Drift (for 5m interval)
+    mean_ret = np.mean(rets)
+    var_ret = np.var(rets)
+    drift = mean_ret - (var_ret / 2)
+
+    # Polarity
+    up_moves = rets[rets > 0]
+    dn_moves = rets[rets <= 0]
+
+    prob_up_hist = len(up_moves) / len(rets) if len(rets) > 0 else 0.5
+
+    outcomes = []
+    for _ in range(sims):
+        sim_log_ret = 0.0
+        for _s in range(max(1, steps)):
+            if np.random.random() < prob_up_hist:
+                move = np.random.choice(up_moves) if len(up_moves) > 0 else 0
+            else:
+                move = np.random.choice(dn_moves) if len(dn_moves) > 0 else 0
+            sim_log_ret += (move + drift)
+
+        # Resulting price after 'steps' intervals
+        sim_final_price = current_price * np.exp(sim_log_ret)
+        outcomes.append(sim_final_price)
+
+    outcomes = np.array(outcomes)
+    # Target: Predict if close > 15m open
+    prob_up = np.sum(outcomes > target_open_price) / sims
+    prob_dn = 1.0 - prob_up
+
+    bias = "BULLISH" if prob_up > 0.6 else "BEARISH" if prob_dn > 0.6 else "NEUTRAL"
+
+    return {
+        "prob_up": float(prob_up),
+        "prob_down": float(prob_dn),
+        "bias": bias,
+        "steps": steps,
+        "stdev": float(np.std(outcomes))
+    }

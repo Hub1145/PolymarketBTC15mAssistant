@@ -20,6 +20,7 @@ def score_direction(inputs: Dict[str, Any]) -> Dict[str, float]:
     cluster = inputs.get("cluster")
     rsi = inputs.get("rsi")
     cvd_data = inputs.get("cvd_data") # {divergence: BULLISH|BEARISH|NONE, cvd_delta: float}
+    mc_data = inputs.get("mc_data") # {prob_up: float, bias: str}
 
     macd_1m = inputs.get("macd")
     macd_variants = inputs.get("macd_variants") # { '3_15_3': {histDelta: float}, ... }
@@ -41,104 +42,78 @@ def score_direction(inputs: Dict[str, Any]) -> Dict[str, float]:
     cluster_strength = cluster.get("strength", 0) if cluster else 0
     uptrend = True if cluster_regime == 1 else False if cluster_regime == -1 else None
 
-    # Trend Strength weighting
+    # Handle missing essential inputs
+    if price is None or cluster is None:
+        return {"upScore": None, "downScore": None, "rawUp": None, "uptrend": uptrend}
+
+    # 1. SuperTrend Strength (Trend Following)
     if cluster_regime == 1:
         up += 20 * cluster_strength
     elif cluster_regime == -1:
         down += 20 * cluster_strength
 
-    # RSI protections
-    is_overbought = rsi is not None and rsi > 70
-    is_oversold = rsi is not None and rsi < 30
+    # 2. Monte Carlo conviction (Predictive)
+    if mc_data:
+        up += mc_data.get("prob_up", 0.5) * 40
+        down += mc_data.get("prob_down", 0.5) * 40
 
-    # Handle missing essential inputs
-    if price is None or cluster is None:
-        return {"upScore": None, "downScore": None, "rawUp": None, "uptrend": uptrend}
-
-    # 1. 5m MACD Momentum and Exhaustion
+    # 3. 5m MACD Momentum and Exhaustion Reversal
+    # If exhausted (streak >= 6), we favor reversal if other signals agree
     macd_5m_exhausted = macd_5m_hist_count >= 6
-    if macd_5m_hist_color == "green":
-        if 1 <= macd_5m_hist_count <= 5:
-            up += 6
-        elif macd_5m_exhausted:
-            up = 0.5 # Suppress buy
-    elif macd_5m_hist_color == "red":
-        if 1 <= macd_5m_hist_count <= 5:
-            down += 6
-        elif macd_5m_exhausted:
-            down = 0.5 # Suppress sell
+    if macd_5m_exhausted:
+        if macd_5m_hist_color == "green":
+            down += 15 # Favor reversal to down
+            up = 0.5   # Suppress following the exhausted trend
+        else:
+            up += 15   # Favor reversal to up
+            down = 0.5
+    else:
+        # Early momentum (1-5 bars)
+        if macd_5m_hist_color == "green": up += 10
+        elif macd_5m_hist_color == "red": down += 10
 
-    # 2. 5m Heiken Ashi Momentum and Exhaustion
-    ha_5m_exhausted = ha_5m_count >= 5 # Lower threshold
-    if ha_5m_color == "green":
-        if 1 <= ha_5m_count <= 2:
-            up += 25 # VERY strong early momentum
-        elif 3 <= ha_5m_count <= 4:
-            up += 10
-        elif ha_5m_exhausted:
-            up = 0.1 # Stronger suppression
-    elif ha_5m_color == "red":
-        if 1 <= ha_5m_count <= 2:
-            down += 25
-        elif 3 <= ha_5m_count <= 4:
-            down += 10
-        elif ha_5m_exhausted:
-            down = 0.1
-
-    # 3. New Momentum Detection
-    # If MACD exhausted, new HA start forming => sign of new momentum
-    if macd_5m_exhausted and ha_5m_color and ha_5m_count <= 2:
-        if ha_5m_color == "green" and uptrend:
-            up += 20 # Stronger signal
-        elif ha_5m_color == "red" and not uptrend:
-            down += 20 # Stronger signal
-
-    # If HA exhausted, new MACD histogram start => signal
-    if ha_5m_exhausted and macd_5m_hist_color and macd_5m_hist_count <= 2:
-        if macd_5m_hist_color == "green" and uptrend:
-            up += 20
-        elif macd_5m_hist_color == "red" and not uptrend:
+    # 4. 5m Heiken Ashi Exhaustion Reversal
+    ha_5m_exhausted = ha_5m_count >= 6
+    if ha_5m_exhausted:
+        if ha_5m_color == "green":
             down += 20
+            up = 0.1
+        else:
+            up += 20
+            down = 0.1
+    else:
+        if ha_5m_color == "green": up += 15
+        elif ha_5m_color == "red": down += 15
 
-    # 4. CVD Aggression and Divergence
+    # 5. CVD Aggression and Divergence
     if cvd_data:
         div = cvd_data.get("divergence", "NONE")
-        cvd_delta = cvd_data.get("cvd_delta", 0)
+        if div == "BULLISH": up += 30
+        elif div == "BEARISH": down += 30
 
-        # Divergence is high-alpha signal
-        if div == "BULLISH":
-            up += 30 # Increased weight
-        elif div == "BEARISH":
-            down += 30 # Increased weight
+    # 6. RSI Overbought/Oversold Reversal Logic
+    if rsi is not None:
+        if rsi > 70:
+            down += 25 # High conviction reversal
+            up = 0.1
+        elif rsi < 30:
+            up += 25 # High conviction reversal
+            down = 0.1
 
-        # Trend following aggression
-        if cvd_delta > 0:
-            up += 5
-        elif cvd_delta < 0:
-            down += 5
-
-    # 5. Backtested MACD Alpha Variants
+    # 7. MACD Alpha Alignment
     if macd_variants:
         for name, data in macd_variants.items():
             delta = data.get("histDelta")
             hist = data.get("hist")
             if delta is not None and hist is not None:
-                # High conviction if hist and delta align
-                if delta > 0 and hist > 0:
-                    up += 10
-                elif delta < 0 and hist < 0:
-                    down += 10
-                elif delta > 0:
-                    up += 5
-                elif delta < 0:
-                    down += 5
+                if delta > 0: up += 5
+                elif delta < 0: down += 5
 
-    # 6. Global Filters
-    if is_overbought: up = 0.1
-    if is_oversold: down = 0.1
-
-    if uptrend is False: up = min(up, 1.0)
-    if uptrend is True: down = min(down, 1.0)
+    # Final trend filter: Only allow counter-trend if conviction is very high
+    if uptrend is True and down < (up + 15):
+        down = min(down, 1.0)
+    if uptrend is False and up < (down + 15):
+        up = min(up, 1.0)
 
     import math
     def is_invalid(v):
@@ -196,26 +171,30 @@ def decide(inputs: Dict[str, Any]) -> Dict[str, Any]:
     model_up = inputs.get("modelUp")
     model_down = inputs.get("modelDown")
 
-    # Time remaining strictness: avoid late entries (< 2.5 mins left)
-    if remaining_minutes is not None and remaining_minutes < 2.5:
-        return {"action": "NO_TRADE", "side": None, "phase": "LATE", "reason": "time_exhaustion"}
+    # Time remaining strictness: avoid very late entries (< 1 min left)
+    if remaining_minutes is not None and remaining_minutes < 1.0:
+        return {"action": "NO_TRADE", "side": None, "phase": "EXPIRING", "reason": "too_late"}
 
     phase = "EARLY" if remaining_minutes > 10 else "MID" if remaining_minutes > 5 else "LATE"
-    threshold = 0.05 if phase == "EARLY" else 0.1 if phase == "MID" else 0.2
-    min_prob = 0.55 if phase == "EARLY" else 0.6 if phase == "MID" else 0.65
 
-    if edge_up is None or edge_down is None:
-        return {"action": "NO_TRADE", "side": None, "phase": phase, "reason": "missing_market_data"}
+    # Requirement for High Conviction (Predictive options style)
+    # We prioritize model probability over market edge
+    min_prob = 0.70 # Require 70% conviction for any trade
 
-    best_side = "UP" if edge_up > edge_down else "DOWN"
-    best_edge = edge_up if best_side == "UP" else edge_down
-    best_model = model_up if best_side == "UP" else model_down
+    if model_up is None or model_down is None:
+        return {"action": "NO_TRADE", "side": None, "phase": phase, "reason": "missing_model_data"}
 
-    if best_edge < threshold:
-        return {"action": "NO_TRADE", "side": None, "phase": phase, "reason": f"edge_below_{threshold}"}
+    best_side = "UP" if model_up > model_down else "DOWN"
+    best_prob = model_up if best_side == "UP" else model_down
 
-    if best_model is not None and best_model < min_prob:
-        return {"action": "NO_TRADE", "side": None, "phase": phase, "reason": f"prob_below_{min_prob}"}
+    if best_prob < min_prob:
+        return {"action": "NO_TRADE", "side": None, "phase": phase, "reason": f"conviction_{best_prob:.2f}_below_{min_prob}"}
 
-    strength = "STRONG" if best_edge >= 0.2 else "GOOD" if best_edge >= 0.1 else "OPTIONAL"
-    return {"action": "ENTER", "side": best_side, "phase": phase, "strength": strength, "edge": best_edge}
+    # Optional: still check edge if market data is available, but don't block
+    edge = edge_up if best_side == "UP" else edge_down
+    if edge is not None and edge < 0:
+        # If model says UP but market is already priced HIGHER than model, skip
+        return {"action": "NO_TRADE", "side": None, "phase": phase, "reason": "negative_edge"}
+
+    strength = "HIGH_CONVICTION" if best_prob >= 0.8 else "STRONG"
+    return {"action": "ENTER", "side": best_side, "phase": phase, "strength": strength, "prob": best_prob}
