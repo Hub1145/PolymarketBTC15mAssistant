@@ -142,8 +142,12 @@
                     </div>
                     <div class="flex justify-between text-sm sm:text-base">
                         <span class="text-gray-400">Monte Carlo (15m Close)</span>
-                        <span :class="data.indicators?.monte_carlo?.bias === 'BULLISH' ? 'text-green-400' : (data.indicators?.monte_carlo?.bias === 'BEARISH' ? 'text-red-400' : 'text-gray-400')"
-                              x-text="data.indicators?.monte_carlo?.prob_up != null ? ((data.indicators.monte_carlo.prob_up * 100).toFixed(1) + '% UP') : 'NaN'"></span>
+                        <div class="flex flex-col items-end">
+                            <span :class="data.indicators?.monte_carlo?.bias === 'BULLISH' ? 'text-green-400' : (data.indicators?.monte_carlo?.bias === 'BEARISH' ? 'text-red-400' : 'text-gray-400')"
+                                  x-text="data.indicators?.monte_carlo?.prob_up != null ? ((data.indicators.monte_carlo.prob_up * 100).toFixed(1) + '% UP') : 'NaN'"></span>
+                            <span :class="data.indicators?.monte_carlo?.bias === 'BEARISH' ? 'text-green-400' : (data.indicators?.monte_carlo?.bias === 'BULLISH' ? 'text-red-400' : 'text-gray-400')"
+                                  x-text="data.indicators?.monte_carlo?.prob_down != null ? ((data.indicators.monte_carlo.prob_down * 100).toFixed(1) + '% DOWN') : ''" class="text-[10px]"></span>
+                        </div>
                     </div>
                     <div class="flex justify-between text-sm sm:text-base">
                         <span class="text-gray-400">Market Regime</span>

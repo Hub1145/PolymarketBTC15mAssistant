@@ -1,6 +1,7 @@
 import asyncio
 import time
 import json
+import os
 import pandas as pd
 from datetime import datetime
 from typing import Dict, Any, List, Optional
@@ -20,6 +21,9 @@ import utils
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Load previous state
+    load_state()
+
     # Initial seeding
     await seed_kline_buffers()
 
@@ -56,8 +60,35 @@ state = {
     "paper_balance": settings.PAPER_BALANCE_USD,
     "active_trades": [],
     "trade_history": [],
-    "logs": []
+    "logs": [],
+    "last_trade_side": None
 }
+
+def save_state():
+    try:
+        data_to_save = {
+            "paper_balance": state["paper_balance"],
+            "active_trades": state["active_trades"],
+            "trade_history": state["trade_history"],
+            "last_trade_side": state["last_trade_side"]
+        }
+        with open("state_data.json", "w") as f:
+            json.dump(data_to_save, f, indent=2)
+    except Exception as e:
+        print(f"Error saving state: {e}")
+
+def load_state():
+    try:
+        if os.path.exists("state_data.json"):
+            with open("state_data.json", "r") as f:
+                loaded = json.load(f)
+                state["paper_balance"] = loaded.get("paper_balance", settings.PAPER_BALANCE_USD)
+                state["active_trades"] = loaded.get("active_trades", [])
+                state["trade_history"] = loaded.get("trade_history", [])
+                state["last_trade_side"] = loaded.get("last_trade_side")
+                log_message("State loaded from state_data.json")
+    except Exception as e:
+        print(f"Error loading state: {e}")
 
 def log_message(msg: str):
     timestamp = datetime.now().strftime("%H:%M:%S")
@@ -183,6 +214,12 @@ async def execute_trade(decision: Dict[str, Any], market_prices: Dict[str, Any],
         return
 
     side = decision["side"]
+
+    # Constraint: Do not open another trade of the same side until a different side trade occurs
+    if state["last_trade_side"] == side:
+        # log_message(f"Skipping {side} trade: consecutive same-side trades not allowed.")
+        return
+
     price = market_prices["up"] if side == "UP" else market_prices["down"]
     if price is None:
         return
@@ -216,6 +253,8 @@ async def execute_trade(decision: Dict[str, Any], market_prices: Dict[str, Any],
     if state["trading_mode"] == "paper":
         state["paper_balance"] -= amount_to_risk
         state["active_trades"].append(trade)
+        state["last_trade_side"] = side
+        save_state()
 
         # Simulated Arbitrage Hedge on Hyperliquid
         # In real scenario, would open short BTC on Hyperliquid
@@ -226,6 +265,8 @@ async def execute_trade(decision: Dict[str, Any], market_prices: Dict[str, Any],
 
 async def update_trades(current_prices: Dict[str, Any]):
     remaining_active = []
+    trades_changed = False
+
     for trade in state["active_trades"]:
         market = await data.fetch_market_by_slug(trade["market_slug"])
         if not market:
@@ -233,10 +274,24 @@ async def update_trades(current_prices: Dict[str, Any]):
             continue
 
         is_closed = market.get("closed", False)
-        if is_closed:
+
+        # Fallback: Check if endDate has passed by more than 1 hour
+        now_ts = time.time()
+        end_date_str = market.get("endDate")
+        end_ts = 0
+        if end_date_str:
+            try:
+                end_ts = datetime.fromisoformat(end_date_str.replace('Z', '+00:00')).timestamp()
+            except:
+                pass
+
+        force_settle = False
+        if not is_closed and end_ts > 0 and (now_ts - end_ts) > 3600: # 1 hour overdue
+            log_message(f"Market {trade['market_slug']} is overdue (endDate passed by 1h). Attempting settlement.")
+            force_settle = True
+
+        if is_closed or force_settle:
             # Determine outcome
-            # The original JS logic uses 'outcomePrices' to check which side won
-            # If the market is resolved, one price will be 1.0 (or 100) and the other 0.0
             outcomes = market.get("outcomes", [])
             if isinstance(outcomes, str): outcomes = json.loads(outcomes)
             outcome_prices = market.get("outcomePrices", [])
@@ -266,7 +321,7 @@ async def update_trades(current_prices: Dict[str, Any]):
                     won = True
 
                 if won:
-                    payout = trade["shares"] * 1.0 # Each share settles to $1
+                    payout = trade["shares"] * 1.0
                     state["paper_balance"] += payout
                     settings.PAPER_BALANCE_USD = state["paper_balance"]
                     trade["profit_loss"] = payout - trade["amount"]
@@ -285,13 +340,25 @@ async def update_trades(current_prices: Dict[str, Any]):
                 except:
                     pass
 
-            trade["status"] = "CLOSED"
-            trade["exit_time"] = datetime.now().isoformat()
-            state["trade_history"].append(trade)
+                trade["status"] = "CLOSED"
+                trade["exit_time"] = datetime.now().isoformat()
+                state["trade_history"].append(trade)
+                trades_changed = True
+            elif force_settle:
+                # If overdue but NO WINNING INDEX yet... we wait a bit more or log it
+                log_message(f"Market {trade['market_slug']} is overdue but outcomePrices not finalized: {outcome_prices}")
+                remaining_active.append(trade)
+            else:
+                # Market is closed but no winner yet (wait for resolution)
+                remaining_active.append(trade)
         else:
             remaining_active.append(trade)
 
-    state["active_trades"] = remaining_active
+    if trades_changed:
+        state["active_trades"] = remaining_active
+        save_state()
+    else:
+        state["active_trades"] = remaining_active
 
 async def seed_kline_buffers():
     try:

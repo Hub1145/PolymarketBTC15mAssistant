@@ -1,0 +1,19 @@
+{
+  "paper_balance": 1216.6410203999435,
+  "active_trades": [
+    {
+      "market_id": "1917532",
+      "market_slug": "btc-updown-15m-1775733300",
+      "side": "UP",
+      "entry_price": 0.46,
+      "amount": 135.18233559999373,
+      "shares": 293.874642608682,
+      "entry_time": "2026-04-09T11:21:25.995420",
+      "status": "OPEN",
+      "settlement_price": null,
+      "profit_loss": null
+    }
+  ],
+  "trade_history": [],
+  "last_trade_side": "UP"
+}
