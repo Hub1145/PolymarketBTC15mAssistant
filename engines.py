@@ -102,9 +102,10 @@ def score_direction(inputs: Dict[str, Any]) -> Dict[str, float]:
 
     # 7. MACD Alpha Alignment
     if macd_variants:
-        for name, data in macd_variants.items():
-            delta = data.get("histDelta")
-            hist = data.get("hist")
+        for name, m_data in macd_variants.items():
+            if not m_data: continue
+            delta = m_data.get("histDelta")
+            hist = m_data.get("hist")
             if delta is not None and hist is not None:
                 if delta > 0: up += 5
                 elif delta < 0: down += 5

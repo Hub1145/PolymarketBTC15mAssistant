@@ -256,10 +256,7 @@ async def execute_trade(decision: Dict[str, Any], market_prices: Dict[str, Any],
         state["last_trade_side"] = side
         save_state()
 
-        # Simulated Arbitrage Hedge on Hyperliquid
-        # In real scenario, would open short BTC on Hyperliquid
         log_message(f"Executed PAPER trade: {side} @ {price} for {market.get('slug')} (Amount: ${amount_to_risk:.2f})")
-        log_message(f"Simulated Arbitrage: Opened inverse hedge on Hyperliquid for BTC balance protection.")
     else:
         log_message(f"LIVE mode enabled but execution not implemented. Mode: {state['trading_mode']}")
 
@@ -268,90 +265,92 @@ async def update_trades(current_prices: Dict[str, Any]):
     trades_changed = False
 
     for trade in state["active_trades"]:
-        market = await data.fetch_market_by_slug(trade["market_slug"])
-        if not market:
-            remaining_active.append(trade)
-            continue
+        try:
+            market = await data.fetch_market_by_slug(trade["market_slug"])
+            if not market:
+                remaining_active.append(trade)
+                continue
 
-        is_closed = market.get("closed", False)
+            is_closed = market.get("closed", False)
 
-        # Fallback: Check if endDate has passed by more than 1 hour
-        now_ts = time.time()
-        end_date_str = market.get("endDate")
-        end_ts = 0
-        if end_date_str:
-            try:
-                end_ts = datetime.fromisoformat(end_date_str.replace('Z', '+00:00')).timestamp()
-            except:
-                pass
-
-        force_settle = False
-        if not is_closed and end_ts > 0 and (now_ts - end_ts) > 3600: # 1 hour overdue
-            log_message(f"Market {trade['market_slug']} is overdue (endDate passed by 1h). Attempting settlement.")
-            force_settle = True
-
-        if is_closed or force_settle:
-            # Determine outcome
-            outcomes = market.get("outcomes", [])
-            if isinstance(outcomes, str): outcomes = json.loads(outcomes)
-            outcome_prices = market.get("outcomePrices", [])
-            if isinstance(outcome_prices, str): outcome_prices = json.loads(outcome_prices)
-
-            won = False
-            payout = 0.0
-
-            up_index = next((i for i, x in enumerate(outcomes) if x.lower() == settings.POLYMARKET_UP_LABEL.lower()), -1)
-            down_index = next((i for i, x in enumerate(outcomes) if x.lower() == settings.POLYMARKET_DOWN_LABEL.lower()), -1)
-
-            winning_index = -1
-            if outcome_prices:
+            now_ts = time.time()
+            end_date_str = market.get("endDate")
+            end_ts = 0
+            if end_date_str:
                 try:
-                    # Find which index has price near 1.0
-                    for i, p in enumerate(outcome_prices):
-                        if float(p) > 0.9:
-                            winning_index = i
-                            break
+                    end_ts = datetime.fromisoformat(end_date_str.replace('Z', '+00:00')).timestamp()
                 except:
                     pass
 
-            if winning_index != -1:
-                if trade["side"] == "UP" and winning_index == up_index:
-                    won = True
-                elif trade["side"] == "DOWN" and winning_index == down_index:
-                    won = True
+            # Settlement check
+            should_settle = is_closed or (end_ts > 0 and now_ts > end_ts)
 
-                if won:
-                    payout = trade["shares"] * 1.0
-                    state["paper_balance"] += payout
-                    settings.PAPER_BALANCE_USD = state["paper_balance"]
-                    trade["profit_loss"] = payout - trade["amount"]
-                    log_message(f"WIN: Trade for {trade['market_slug']} settled. Profit: ${trade['profit_loss']:.2f}")
+            if should_settle:
+                # Determine outcome
+                outcomes = market.get("outcomes", [])
+                if isinstance(outcomes, str): outcomes = json.loads(outcomes)
+                outcome_prices = market.get("outcomePrices", [])
+                if isinstance(outcome_prices, str): outcome_prices = json.loads(outcome_prices)
+
+                up_index = next((i for i, x in enumerate(outcomes) if x.lower() == settings.POLYMARKET_UP_LABEL.lower()), -1)
+                down_index = next((i for i, x in enumerate(outcomes) if x.lower() == settings.POLYMARKET_DOWN_LABEL.lower()), -1)
+
+                winning_index = -1
+                if outcome_prices:
+                    try:
+                        for i, p in enumerate(outcome_prices):
+                            if float(p) > 0.9:
+                                winning_index = i
+                                break
+                    except:
+                        pass
+
+                # If Polymarket hasn't updated outcomePrices yet, but market is past endDate,
+                # we can try to settle based on the Chainlink price if we have it.
+                # However, for 100% accuracy, we should probably wait for Polymarket or
+                # use the specific strike price if we can find it.
+                # For now, let's stick to Polymarket's outcomePrices but check more frequently.
+
+                if winning_index != -1:
+                    won = False
+                    if trade["side"] == "UP" and winning_index == up_index:
+                        won = True
+                    elif trade["side"] == "DOWN" and winning_index == down_index:
+                        won = True
+
+                    if won:
+                        payout = trade["shares"] * 1.0
+                        state["paper_balance"] += payout
+                        settings.PAPER_BALANCE_USD = state["paper_balance"]
+                        trade["profit_loss"] = payout - trade["amount"]
+                        log_message(f"WIN: Trade for {trade['market_slug']} settled. Profit: ${trade['profit_loss']:.2f}")
+                    else:
+                        trade["profit_loss"] = -trade["amount"]
+                        log_message(f"LOSS: Trade for {trade['market_slug']} settled. Loss: ${trade['profit_loss']:.2f}")
+
+                    # Persist balance to config.json
+                    try:
+                        with open("config.json", "r") as f:
+                            cfg = json.load(f)
+                        cfg["paper_balance_usd"] = state["paper_balance"]
+                        with open("config.json", "w") as f:
+                            json.dump(cfg, f, indent=2)
+                    except:
+                        pass
+
+                    trade["status"] = "CLOSED"
+                    trade["exit_time"] = datetime.now().isoformat()
+                    state["trade_history"].append(trade)
+                    trades_changed = True
                 else:
-                    trade["profit_loss"] = -trade["amount"]
-                    log_message(f"LOSS: Trade for {trade['market_slug']} settled. Loss: ${trade['profit_loss']:.2f}")
-
-                # Persist balance to config.json
-                try:
-                    with open("config.json", "r") as f:
-                        cfg = json.load(f)
-                    cfg["paper_balance_usd"] = state["paper_balance"]
-                    with open("config.json", "w") as f:
-                        json.dump(cfg, f, indent=2)
-                except:
-                    pass
-
-                trade["status"] = "CLOSED"
-                trade["exit_time"] = datetime.now().isoformat()
-                state["trade_history"].append(trade)
-                trades_changed = True
-            elif force_settle:
-                # If overdue but NO WINNING INDEX yet... we wait a bit more or log it
-                log_message(f"Market {trade['market_slug']} is overdue but outcomePrices not finalized: {outcome_prices}")
-                remaining_active.append(trade)
+                    # Past endDate but no winner yet - keep active but log
+                    if now_ts > end_ts + 300: # 5 mins late
+                         log_message(f"Waiting for settlement: {trade['market_slug']} is past endDate but no winner yet.")
+                    remaining_active.append(trade)
             else:
-                # Market is closed but no winner yet (wait for resolution)
                 remaining_active.append(trade)
-        else:
+        except Exception as e:
+            print(f"Error updating trade {trade.get('market_slug')}: {e}")
             remaining_active.append(trade)
 
     if trades_changed:
@@ -586,6 +585,8 @@ async def update_loop():
             state["last_update_ts"] = time.time()
 
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             print(f"Error in update loop: {e}")
 
         await asyncio.sleep(settings.POLL_INTERVAL_MS / 1000)
