@@ -12,38 +12,99 @@ def to_number(x) -> Optional[float]:
 
 async def fetch_klines(symbol: str, interval: str, limit: int) -> List[Dict]:
     """
-    Fetch OHLCV data from Binance.
+    Fetch OHLCV data from Kraken (fallback for Binance if blocked).
+    Kraken uses different interval mapping and symbol format.
     """
-    url = f"{settings.BINANCE_BASE_URL}/api/v3/klines"
-    params = {"symbol": symbol.upper(), "interval": interval, "limit": limit}
+    # Mapping intervals: 1m -> 1, 5m -> 5, 15m -> 15, 1h -> 60
+    k_interval = 1
+    if interval == "5m": k_interval = 5
+    elif interval == "15m": k_interval = 15
+    elif interval == "1h": k_interval = 60
+
+    # Kraken symbol for BTCUSDT is usually XBTUSDT or XBTUSD
+    k_symbol = "XBTUSDT" if "USDT" in symbol.upper() else "XBTUSD"
+
+    url = "https://api.kraken.com/0/public/OHLC"
+    params = {
+        "pair": k_symbol,
+        "interval": k_interval
+    }
 
     proxy = get_proxy_url_for(url)
     async with httpx.AsyncClient(proxy=proxy if proxy else None) as client:
-        res = await client.get(url, params=params)
-        res.raise_for_status()
-        data = res.json()
-        return [{
-            "openTime": int(k[0]),
-            "open": to_number(k[1]),
-            "high": to_number(k[2]),
-            "low": to_number(k[3]),
-            "close": to_number(k[4]),
-            "volume": to_number(k[5]),
-            "closeTime": int(k[6])
-        } for k in data]
+        try:
+            res = await client.get(url, params=params)
+            res.raise_for_status()
+            res_data = res.json()
+
+            if res_data.get("error"):
+                # Fallback to Binance if Kraken fails
+                raise Exception(f"Kraken error: {res_data['error']}")
+
+            # Get the result key (dynamically as it contains the symbol)
+            result = res_data.get("result", {})
+            pair_key = next((k for k in result.keys() if k != "last"), None)
+            if not pair_key:
+                raise Exception("Kraken result empty")
+
+            ohlcv = result[pair_key]
+            # Kraken return: [time, open, high, low, close, vwap, volume, count]
+            # Limited by Kraken to 720 bars
+            return [{
+                "openTime": int(k[0]) * 1000,
+                "open": to_number(k[1]),
+                "high": to_number(k[2]),
+                "low": to_number(k[3]),
+                "close": to_number(k[4]),
+                "volume": to_number(k[6]),
+                "closeTime": (int(k[0]) + k_interval * 60) * 1000 - 1
+            } for k in ohlcv[-limit:]]
+
+        except Exception as e:
+            print(f"Kraken fetch failed, trying Binance: {e}")
+            # Binance original logic
+            url = f"{settings.BINANCE_BASE_URL}/api/v3/klines"
+            params = {"symbol": symbol, "interval": interval, "limit": limit}
+            res = await client.get(url, params=params)
+            res.raise_for_status()
+            data = res.json()
+            return [{
+                "openTime": int(k[0]),
+                "open": to_number(k[1]),
+                "high": to_number(k[2]),
+                "low": to_number(k[3]),
+                "close": to_number(k[4]),
+                "volume": to_number(k[5]),
+                "closeTime": int(k[6])
+            } for k in data]
 
 async def fetch_last_price(symbol: str) -> Optional[float]:
     """
-    Fetch last price from Binance.
+    Fetch last price from Kraken (fallback for Binance).
     """
-    url = f"{settings.BINANCE_BASE_URL}/api/v3/ticker/price"
-    params = {"symbol": symbol.upper()}
+    k_symbol = "XBTUSDT" if "USDT" in symbol.upper() else "XBTUSD"
+    url = "https://api.kraken.com/0/public/Ticker"
+    params = {"pair": k_symbol}
     proxy = get_proxy_url_for(url)
     async with httpx.AsyncClient(proxy=proxy if proxy else None) as client:
-        res = await client.get(url, params=params)
-        res.raise_for_status()
-        data = res.json()
-        return to_number(data["price"])
+        try:
+            res = await client.get(url, params=params)
+            res.raise_for_status()
+            res_data = res.json()
+            if res_data.get("error"): raise Exception(res_data["error"])
+
+            result = res_data["result"]
+            pair_key = next(iter(result))
+            # 'c' is last trade: [price, whole_lot_volume]
+            return to_number(result[pair_key]["c"][0])
+        except Exception as e:
+            print(f"Kraken ticker failed, trying Binance: {e}")
+            url = f"{settings.BINANCE_BASE_URL}/api/v3/ticker/price"
+            params = {"symbol": symbol}
+            res = await client.get(url, params=params)
+            res.raise_for_status()
+            data = res.json()
+            return to_number(data["price"])
 
 async def fetch_market_by_slug(slug: str) -> Optional[Dict]:
     url = f"{settings.GAMMA_BASE_URL}/markets"
