@@ -163,7 +163,7 @@ class PolymarketChainlinkStream:
                         filters = f'{{"symbol":"{self.symbol_includes}/usd"}}'
                         subscribe_msg = {
                             "action": "subscribe",
-                            "subscriptions": [{"topic": "crypto_prices_chainlink", "type": "*", "filters": filters}]
+                            "subscriptions": [{"topic": "crypto_prices_chainlink", "topic_id": "*", "filters": filters}]
                         }
                         await ws.send_json(subscribe_msg)
 
@@ -176,13 +176,13 @@ class PolymarketChainlinkStream:
                                     continue
 
                                 try:
-                                    data = json.loads(msg.data)
+                                    data_msg = json.loads(msg.data)
                                 except:
                                     continue
-                                if data.get("topic") != "crypto_prices_chainlink":
+                                if data_msg.get("topic") != "crypto_prices_chainlink":
                                     continue
 
-                                payload = data.get("payload", {})
+                                payload = data_msg.get("payload", {})
                                 if isinstance(payload, str):
                                     try:
                                         payload = json.loads(payload)
@@ -262,9 +262,9 @@ class ChainlinkPriceStream:
                         while not self.closed:
                             msg = await ws.receive()
                             if msg.type == aiohttp.WSMsgType.TEXT:
-                                data = json.loads(msg.data)
-                                if data.get("method") == "eth_subscription":
-                                    log = data.get("params", {}).get("result", {})
+                                data_res = json.loads(msg.data)
+                                if data_res.get("method") == "eth_subscription":
+                                    log = data_res.get("params", {}).get("result", {})
                                     topics = log.get("topics", [])
                                     if len(topics) >= 2:
                                         answer = int(topics[1], 16)

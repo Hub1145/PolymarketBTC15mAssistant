@@ -213,18 +213,18 @@ async def execute_trade(decision: Dict[str, Any], market_prices: Dict[str, Any],
     if decision["action"] != "ENTER":
         return
 
+    # CONSTRAINT: Only one position at a time
+    if state["active_trades"]:
+        return
+
     side = decision["side"]
 
     # Constraint: Do not open another trade of the same side until a different side trade occurs
     if state["last_trade_side"] == side:
-        # log_message(f"Skipping {side} trade: consecutive same-side trades not allowed.")
         return
 
     price = market_prices["up"] if side == "UP" else market_prices["down"]
     if price is None:
-        return
-
-    if any(t["market_id"] == market["id"] for t in state["active_trades"]):
         return
 
     # Risk management
@@ -256,8 +256,6 @@ async def execute_trade(decision: Dict[str, Any], market_prices: Dict[str, Any],
         state["last_trade_side"] = side
         save_state()
 
-        # Simulated Arbitrage Hedge on Hyperliquid
-        # In real scenario, would open short BTC on Hyperliquid
         log_message(f"Executed PAPER trade: {side} @ {price} for {market.get('slug')} (Amount: ${amount_to_risk:.2f})")
     else:
         log_message(f"LIVE mode enabled but execution not implemented. Mode: {state['trading_mode']}")
@@ -304,21 +302,15 @@ async def update_trades(current_prices: Dict[str, Any]):
                 except:
                     pass
 
-            # If outcomePrices not yet 1.0/0.0, fallback to current price vs strike price if we can find it
-            # Polymarket 15m events usually resolve based on Chainlink price at endDate
+            # If outcomePrices not yet 1.0/0.0, fallback to current price vs strike price
             if winning_index == -1:
-                # Try to use current settlement price vs entry logic
-                # We'll use the latest Chainlink price as the source of truth if market is expired
                 settlement_price = current_prices.get("chainlink") or current_prices.get("spot")
-
-                # Strike price extraction (e.g., from question "Will BTC be above $60,000.50...")
                 question = market.get("question", "")
                 import re
                 match = re.search(r'\$(\d{1,3}(?:,\d{3})*(?:\.\d+)?)', question)
                 if match:
                     strike_price = float(match.group(1).replace(',', ''))
                     if settlement_price:
-                        # Side UP wins if price > strike
                         is_up_win = settlement_price > strike_price
                         up_index = next((i for i, x in enumerate(outcomes) if x.lower() == settings.POLYMARKET_UP_LABEL.lower()), -1)
                         down_index = next((i for i, x in enumerate(outcomes) if x.lower() == settings.POLYMARKET_DOWN_LABEL.lower()), -1)
@@ -394,7 +386,6 @@ async def update_loop():
 
             binance_ws = binance_stream.get_last()
             if not binance_ws.get("price"):
-                # Fallback to PolWS or ClWS if trade stream is empty
                 poly_ws_last = polymarket_ws_stream.get_last()
                 cl_ws_last = chainlink_ws_stream.get_last()
                 binance_ws["price"] = poly_ws_last.get("price") or cl_ws_last.get("price")
@@ -412,23 +403,16 @@ async def update_loop():
             chainlink_data = results[1] if not isinstance(results[1], Exception) else {}
             poly_snapshot = results[2] if not isinstance(results[2], Exception) else {"ok": False}
 
-            # Use real-time WebSocket buffers for indicators
             klines_1m = binance_kline_1m.get_candles()
             klines_5m = binance_kline_5m.get_candles()
 
             spot_price = binance_ws.get("price") if binance_ws and binance_ws.get("price") else last_price
-
-            # CVD Divergence Calculation
             cvd_data = indicators.detect_cvd_divergence(binance_ws.get("cvd_history", []))
 
-            # Monte Carlo Simulation (Predictive Candle Close)
-            # steps = remaining 5m periods in the 15m window
             mc_steps = max(1, int(pd.Series(timing["remainingMinutes"]).apply(lambda x: __import__('math').ceil(x / 5)).iloc[0]))
 
-            # Find the 15m open price (open of the first 5m candle in this 15m window)
             target_open = spot_price
             if klines_5m:
-                # Find candle with openTime <= startMs
                 start_ms = timing["startMs"]
                 for c in reversed(klines_5m):
                     if c["openTime"] <= start_ms:
@@ -443,7 +427,6 @@ async def update_loop():
                 sims=1000
             )
 
-            # Polymarket Chainlink Price Logic with explicit source tracking
             current_price = None
             price_source = None
 
@@ -467,7 +450,6 @@ async def update_loop():
             rsi_now = indicators.compute_rsi(closes, settings.RSI_PERIOD)
             macd = indicators.compute_macd(closes, settings.MACD_FAST, settings.MACD_SLOW, settings.MACD_SIGNAL)
 
-            # Backtested MACD Alpha Variants
             macd_variants = {
                 "3_15_3": indicators.compute_macd(closes[-150:], 3, 15, 3),
                 "4_16_3": indicators.compute_macd(closes[-58:], 4, 16, 3),
@@ -476,7 +458,6 @@ async def update_loop():
             ha = indicators.compute_heiken_ashi(klines_1m)
             consec = indicators.count_consecutive(ha)
 
-            # 5m indicators
             closes_5m = [c["close"] for c in klines_5m]
             st_cluster_5m = {"regime": 0, "strength": 0, "scBu": 0.5, "scBe": 0.5}
             consec_hist_5m = {"direction": None, "count": 0}
@@ -484,21 +465,17 @@ async def update_loop():
             macd_5m = None
 
             if len(klines_5m) >= 50:
-                # Optimized SuperTrend Cluster calculation
                 df_5m = pd.DataFrame(klines_5m)
                 st_cluster_5m = indicators.compute_supertrend_cluster(df_5m, settings.get_st_params())
 
                 macd_5m = indicators.compute_macd(closes_5m, settings.MACD_FAST, settings.MACD_SLOW, settings.MACD_SIGNAL)
-                # Optimized single-pass MACD histogram series calculation
                 hist_series_5m = indicators.compute_macd_series(closes_5m, settings.MACD_FAST, settings.MACD_SLOW, settings.MACD_SIGNAL)
                 consec_hist_5m = indicators.count_consecutive_hist(hist_series_5m)
 
                 ha_5m = indicators.compute_heiken_ashi(klines_5m)
                 consec_5m = indicators.count_consecutive(ha_5m)
 
-            regime_info = engines.detect_regime({
-                "cluster": st_cluster_5m
-            })
+            regime_info = engines.detect_regime({"cluster": st_cluster_5m})
 
             scored = engines.score_direction({
                 "price": spot_price,
@@ -518,9 +495,7 @@ async def update_loop():
                 "heiken_5m_count": consec_5m["count"]
             })
 
-            # Temporary fix for UI values if indicators failed
             rsi_val = rsi_now
-
             time_aware = engines.apply_time_awareness(scored["rawUp"], time_left_min, settings.CANDLE_WINDOW_MINUTES)
 
             market_up = poly_snapshot["prices"]["up"] if poly_snapshot["ok"] else None
@@ -541,10 +516,7 @@ async def update_loop():
                 "modelDown": time_aware["adjustedDown"]
             })
 
-            current_prices_dict = {
-                "spot": spot_price,
-                "chainlink": current_price
-            }
+            current_prices_dict = {"spot": spot_price, "chainlink": current_price}
 
             if poly_snapshot["ok"]:
                 await execute_trade(decision, poly_snapshot["prices"], poly_snapshot["market"])
@@ -625,7 +597,6 @@ async def get_available_series():
 
 @app.get("/api/settings")
 async def get_settings():
-    # Return serializable version of settings
     pk = settings.PRIVATE_KEY
     masked_pk = pk[:6] + "..." + pk[-4:] if pk and len(pk) > 10 else pk
 
@@ -652,19 +623,14 @@ async def get_settings():
 @app.post("/api/settings")
 async def post_settings(new_settings: Dict[str, Any]):
     global binance_stream, polymarket_ws_stream, chainlink_ws_stream, binance_kline_1m, binance_kline_5m
-
-    # Check if critical stream settings changed
     old_symbol = settings.SYMBOL
 
-    # Secret handling: if new_settings['private_key'] is masked (contains '...'),
-    # we don't update settings.PRIVATE_KEY and we don't save the masked value to disk.
     new_pk = new_settings.get("private_key")
     if new_pk and "..." in new_pk:
-        new_settings["private_key"] = settings.PRIVATE_KEY # Restore real key to save it properly
+        new_settings["private_key"] = settings.PRIVATE_KEY
     elif new_pk:
         settings.PRIVATE_KEY = new_pk
 
-    # Save to config.json
     with open("config.json", "w") as f:
         json.dump(new_settings, f, indent=2)
 
@@ -697,7 +663,6 @@ async def post_settings(new_settings: Dict[str, Any]):
     state["trading_mode"] = settings.MODE
     state["paper_balance"] = settings.PAPER_BALANCE_USD
 
-    # Restart streams if symbol changed
     if settings.SYMBOL != old_symbol:
         binance_stream.close()
         binance_stream = ws_data.BinanceTradeStream(symbol=settings.SYMBOL)
@@ -711,7 +676,6 @@ async def post_settings(new_settings: Dict[str, Any]):
         binance_kline_5m = ws_data.BinanceKlineStream(symbol=settings.SYMBOL, interval="5m", limit=200)
         asyncio.create_task(binance_kline_5m.start())
 
-        # Reseed buffers for new symbol
         await seed_kline_buffers()
 
         polymarket_ws_stream.close()
