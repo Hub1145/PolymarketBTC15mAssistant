@@ -259,7 +259,6 @@ async def execute_trade(decision: Dict[str, Any], market_prices: Dict[str, Any],
         # Simulated Arbitrage Hedge on Hyperliquid
         # In real scenario, would open short BTC on Hyperliquid
         log_message(f"Executed PAPER trade: {side} @ {price} for {market.get('slug')} (Amount: ${amount_to_risk:.2f})")
-        log_message(f"Simulated Arbitrage: Opened inverse hedge on Hyperliquid for BTC balance protection.")
     else:
         log_message(f"LIVE mode enabled but execution not implemented. Mode: {state['trading_mode']}")
 
@@ -275,7 +274,7 @@ async def update_trades(current_prices: Dict[str, Any]):
 
         is_closed = market.get("closed", False)
 
-        # Fallback: Check if endDate has passed by more than 1 hour
+        # Settle immediately when endDate is reached
         now_ts = time.time()
         end_date_str = market.get("endDate")
         end_ts = 0
@@ -285,23 +284,14 @@ async def update_trades(current_prices: Dict[str, Any]):
             except:
                 pass
 
-        force_settle = False
-        if not is_closed and end_ts > 0 and (now_ts - end_ts) > 3600: # 1 hour overdue
-            log_message(f"Market {trade['market_slug']} is overdue (endDate passed by 1h). Attempting settlement.")
-            force_settle = True
+        market_expired = end_ts > 0 and now_ts >= end_ts
 
-        if is_closed or force_settle:
+        if is_closed or market_expired:
             # Determine outcome
             outcomes = market.get("outcomes", [])
             if isinstance(outcomes, str): outcomes = json.loads(outcomes)
             outcome_prices = market.get("outcomePrices", [])
             if isinstance(outcome_prices, str): outcome_prices = json.loads(outcome_prices)
-
-            won = False
-            payout = 0.0
-
-            up_index = next((i for i, x in enumerate(outcomes) if x.lower() == settings.POLYMARKET_UP_LABEL.lower()), -1)
-            down_index = next((i for i, x in enumerate(outcomes) if x.lower() == settings.POLYMARKET_DOWN_LABEL.lower()), -1)
 
             winning_index = -1
             if outcome_prices:
@@ -314,16 +304,40 @@ async def update_trades(current_prices: Dict[str, Any]):
                 except:
                     pass
 
+            # If outcomePrices not yet 1.0/0.0, fallback to current price vs strike price if we can find it
+            # Polymarket 15m events usually resolve based on Chainlink price at endDate
+            if winning_index == -1:
+                # Try to use current settlement price vs entry logic
+                # We'll use the latest Chainlink price as the source of truth if market is expired
+                settlement_price = current_prices.get("chainlink") or current_prices.get("spot")
+
+                # Strike price extraction (e.g., from question "Will BTC be above $60,000.50...")
+                question = market.get("question", "")
+                import re
+                match = re.search(r'\$(\d{1,3}(?:,\d{3})*(?:\.\d+)?)', question)
+                if match:
+                    strike_price = float(match.group(1).replace(',', ''))
+                    if settlement_price:
+                        # Side UP wins if price > strike
+                        is_up_win = settlement_price > strike_price
+                        up_index = next((i for i, x in enumerate(outcomes) if x.lower() == settings.POLYMARKET_UP_LABEL.lower()), -1)
+                        down_index = next((i for i, x in enumerate(outcomes) if x.lower() == settings.POLYMARKET_DOWN_LABEL.lower()), -1)
+                        winning_index = up_index if is_up_win else down_index
+
             if winning_index != -1:
+                up_index = next((i for i, x in enumerate(outcomes) if x.lower() == settings.POLYMARKET_UP_LABEL.lower()), -1)
+                down_index = next((i for i, x in enumerate(outcomes) if x.lower() == settings.POLYMARKET_DOWN_LABEL.lower()), -1)
+
+                won = False
                 if trade["side"] == "UP" and winning_index == up_index:
                     won = True
                 elif trade["side"] == "DOWN" and winning_index == down_index:
                     won = True
 
+                payout = 0.0
                 if won:
                     payout = trade["shares"] * 1.0
                     state["paper_balance"] += payout
-                    settings.PAPER_BALANCE_USD = state["paper_balance"]
                     trade["profit_loss"] = payout - trade["amount"]
                     log_message(f"WIN: Trade for {trade['market_slug']} settled. Profit: ${trade['profit_loss']:.2f}")
                 else:
@@ -344,12 +358,8 @@ async def update_trades(current_prices: Dict[str, Any]):
                 trade["exit_time"] = datetime.now().isoformat()
                 state["trade_history"].append(trade)
                 trades_changed = True
-            elif force_settle:
-                # If overdue but NO WINNING INDEX yet... we wait a bit more or log it
-                log_message(f"Market {trade['market_slug']} is overdue but outcomePrices not finalized: {outcome_prices}")
-                remaining_active.append(trade)
             else:
-                # Market is closed but no winner yet (wait for resolution)
+                # Market expired but no settlement data available yet
                 remaining_active.append(trade)
         else:
             remaining_active.append(trade)
@@ -458,9 +468,6 @@ async def update_loop():
             macd = indicators.compute_macd(closes, settings.MACD_FAST, settings.MACD_SLOW, settings.MACD_SIGNAL)
 
             # Backtested MACD Alpha Variants
-            # 1. MACD(3,15,3) limit 150
-            # 2. MACD(4,16,3) limit 58
-            # 3. MACD(6,28,5) limit 58
             macd_variants = {
                 "3_15_3": indicators.compute_macd(closes[-150:], 3, 15, 3),
                 "4_16_3": indicators.compute_macd(closes[-58:], 4, 16, 3),
@@ -534,10 +541,15 @@ async def update_loop():
                 "modelDown": time_aware["adjustedDown"]
             })
 
+            current_prices_dict = {
+                "spot": spot_price,
+                "chainlink": current_price
+            }
+
             if poly_snapshot["ok"]:
                 await execute_trade(decision, poly_snapshot["prices"], poly_snapshot["market"])
 
-            await update_trades(poly_snapshot["prices"] if poly_snapshot["ok"] else {})
+            await update_trades(current_prices_dict)
 
             signal_label = f"BUY {decision['side']}" if decision["action"] == "ENTER" else "NO TRADE"
             utils.append_csv_row("./logs/signals.csv", csv_header, [
