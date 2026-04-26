@@ -28,10 +28,10 @@ class BinanceTradeStream:
                         while not self.closed:
                             msg = await ws.receive()
                             if msg.type == aiohttp.WSMsgType.TEXT:
-                                data = json.loads(msg.data)
-                                p = float(data.get("p"))
-                                q = float(data.get("q"))
-                                is_buyer_mm = data.get("m") # True = Sell, False = Buy
+                                data_msg = json.loads(msg.data)
+                                p = float(data_msg.get("p"))
+                                q = float(data_msg.get("q"))
+                                is_buyer_mm = data_msg.get("m") # True = Sell, False = Buy
                                 self._process_trade(p, q, is_buyer_mm)
                             elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
                                 break
@@ -46,7 +46,6 @@ class BinanceTradeStream:
         self.last_price = p
         self.last_ts = time.time()
 
-        # Keep last 1000 points for history/divergence
         self.cvd_history.append((self.last_ts, self.cvd, self.last_price))
         if len(self.cvd_history) > 1000:
             self.cvd_history.pop(0)
@@ -89,8 +88,8 @@ class BinanceKlineStream:
                         while not self.closed:
                             msg = await ws.receive()
                             if msg.type == aiohttp.WSMsgType.TEXT:
-                                data = json.loads(msg.data)
-                                k = data.get("k", {})
+                                data_msg = json.loads(msg.data)
+                                k = data_msg.get("k", {})
                                 candle = {
                                     "openTime": int(k.get("t")),
                                     "open": float(k.get("o")),
@@ -157,29 +156,31 @@ class PolymarketChainlinkStream:
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
                 }
                 async with aiohttp.ClientSession(headers=headers) as session:
+                    print(f"Connecting to Polymarket WS: {self.ws_url}")
                     async with session.ws_connect(self.ws_url, proxy=proxy if proxy else None) as ws:
-                        print(f"Connected to Polymarket WS. Filter: {self.symbol_includes}")
+                        print(f"Connected to Polymarket WS. Subscribing to topics...")
 
-                        filters = f'{{"symbol":"{self.symbol_includes}/usd"}}'
-                        subscribe_msg = {
-                            "action": "subscribe",
-                            "subscriptions": [{"topic": "crypto_prices_chainlink", "topic_id": "*", "filters": filters}]
-                        }
-                        await ws.send_json(subscribe_msg)
+                        # Subscribe to crypto_prices_chainlink
+                        # We try both common subscription formats for maximum compatibility
+                        await ws.send_json({"action": "subscribe", "topic": "crypto_prices_chainlink"})
+                        await ws.send_json({"action": "subscribe", "topic": "crypto_prices"})
 
                         asyncio.create_task(ping_loop(ws))
 
                         while not self.closed:
                             msg = await ws.receive()
                             if msg.type == aiohttp.WSMsgType.TEXT:
-                                if not msg.data or msg.data == "PONG":
+                                data_text = msg.data
+                                if data_text in ("PONG", "OK", "PONG\n"):
                                     continue
 
                                 try:
-                                    data_msg = json.loads(msg.data)
+                                    data_msg = json.loads(data_text)
                                 except:
                                     continue
-                                if data_msg.get("topic") != "crypto_prices_chainlink":
+
+                                topic = data_msg.get("topic")
+                                if topic not in ("crypto_prices_chainlink", "crypto_prices"):
                                     continue
 
                                 payload = data_msg.get("payload", {})
@@ -189,26 +190,29 @@ class PolymarketChainlinkStream:
                                     except:
                                         continue
 
-                                symbol = str(payload.get("symbol") or payload.get("pair") or payload.get("ticker") or "").lower()
-                                if self.symbol_includes and self.symbol_includes not in symbol:
-                                    continue
+                                updates = payload if isinstance(payload, list) else [payload]
 
-                                try:
-                                    price_val = payload.get("value") or payload.get("price") or payload.get("current") or payload.get("data")
-                                    if price_val is None: continue
-                                    price = float(price_val)
+                                for update in updates:
+                                    if not isinstance(update, dict): continue
 
-                                    ts_val = payload.get("timestamp") or payload.get("updatedAt")
-                                    updated_at = float(ts_val) if ts_val else time.time()
-                                    if updated_at < 10000000000: updated_at *= 1000
+                                    sym = str(update.get("symbol") or update.get("pair") or update.get("ticker") or "").lower()
+                                    if self.symbol_includes and self.symbol_includes not in sym:
+                                        continue
 
-                                    self.last_price = price
-                                    self.last_updated_at = updated_at
+                                    try:
+                                        price_val = update.get("price") or update.get("value") or update.get("current")
+                                        if price_val is not None:
+                                            self.last_price = float(price_val)
+                                            ts_val = update.get("timestamp") or update.get("updated_at") or time.time()
+                                            updated_at = float(ts_val)
+                                            if updated_at < 10000000000: updated_at *= 1000
+                                            self.last_updated_at = updated_at
 
-                                    if self.on_update:
-                                        await self.on_update({"price": self.last_price, "updatedAt": self.last_updated_at, "source": "polymarket_ws"})
-                                except (ValueError, TypeError):
-                                    continue
+                                            if self.on_update:
+                                                await self.on_update({"price": self.last_price, "updatedAt": self.last_updated_at, "source": "polymarket_ws"})
+                                    except:
+                                        continue
+
                             elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
                                 break
             except Exception as e:
