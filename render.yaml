@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: polymarket-btc-15m-assistant
+    runtime: docker
+    envVars:
+      - key: SYMBOL
+        value: "BTCUSDT"
+      - key: POLL_INTERVAL_MS
+        value: "1000"
